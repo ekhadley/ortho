@@ -88,9 +88,11 @@ def main():
     if args.skip_existing:
         rollouts = [r for r in rollouts if not Path(stems[r["rollout_id"]] + ".safetensors").exists()]
         print(f"{yellow}skipping {len(stems) - len(rollouts)} already harvested rollouts{endc}")
-    for r in pbar(rollouts, desc="harvesting"):
+    bar = pbar(rollouts, desc="harvesting")
+    for r in bar:
         text, ids, spans = rendered[r["rollout_id"]]
         positions = end_positions(spans)
+        bar.set_postfix(tokens=len(ids), positions=len(positions))
         acts = capture(model, ids, positions, layers)
         stem = stems[r["rollout_id"]]
         save_file(acts, stem + ".safetensors")
