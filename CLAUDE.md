@@ -32,7 +32,13 @@ Rollouts come from the secret_number environment in `~/wgmn/agent-interp-envs` (
 - A turn's `commands` are what the env executed (from the state diff). `tool_calls` are what the model attempted; the env rejects multi-call turns and runs nothing. Cheat flags use `commands`, matching the env's own flags.
 - Resumed batches (`*-from-*` dirs) start with turns written by another model; `author_model` and `prefix_turns` say which. The `r<run>s<step>` in those dir names is wrong in places, so the source is found by content match.
 - Runs whose step chain is inconsistent are skipped and printed per batch: one qwen3.5 resumed batch with two lineages in the same run dirs, and six gpt-oss batches where the conversation was restarted mid-run.
-- Only one run has harvested activations (`Qwen3.8-27B/2026-08-26_09-25-50/run-5/activations.pt`). `scripts/harvest_activations.py` in agent-interp-envs produces them and needs ~54GB VRAM for the 27B model.
+- agent-interp-envs has its own `scripts/harvest_activations.py` (mirrors the vLLM rendering, full-sequence capture) and one output file, `Qwen3.8-27B/2026-08-26_09-25-50/run-5/activations.pt`. This project harvests with `harvest.py` instead.
+
+Activation tooling, all reading those jsonl files:
+
+- `rollout_tokens.py`: renders a rollout through the model's chat template with `preserve_thinking=True` (the secret_number tool schemas are baked in) and returns ids plus a span table: system, user, and per turn reasoning / message / tool_call (its argument values) / env_output, each with `start`, `end`, `close` token indices. Spans come from sentinel substitution and a string diff, not from parsing template markers, so model text containing `<tool_call>` or `</think>` is fine. It needs the Qwen3.5+ template: Qwen3's drops earlier reasoning when a mid-run user nudge exists.
+- `test_tokens.py`: tokenizer-only check of the renderer over every qwen rollout (~30 s, `--show <rollout_id>` prints a span table). Run it after touching the renderer or switching model family.
+- `harvest.py`: GPU box only. Balanced sample via `select`, one prefill per rollout through `model.model` (no lm_head, which would need ~56 GB of logits at 112k tokens), forward hooks on the decoder layers, activations at `end_positions` (last content token and closing token of every span) written to `data/acts/<model>/` as one safetensors plus json sidecar per rollout. Hooks rather than `output_hidden_states`, whose last entry is post-final-norm. Install `flash-linear-attention` there or the Gated DeltaNet layers run on the slow torch path.
 
 `rh_probes_paper_notes.md` summarizes the Goodfire reward-hacking probe paper (arXiv 2609.19101) whose difference-of-means method is the starting point for direction finding here.
 
