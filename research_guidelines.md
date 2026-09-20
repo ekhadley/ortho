@@ -397,6 +397,16 @@ except Exception:
 
 ---
 
+## Reporting Results
+
+Delineate observations from conclusions, and place them in different sections of your output if both are present.
+
+Results come first: what was measured, the criteria, the numbers. Brief bullets, one figure each, very minimal jargon.
+
+Conclusions go in their own section afterward, and are optional. Unless I ask for interpretation, I'm expecting results, not a verdict.
+
+---
+
 # Technical Foundations
 
 Background knowledge for mechanistic interpretability work.

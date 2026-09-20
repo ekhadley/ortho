@@ -1061,7 +1061,7 @@ wheels = [
 [[package]]
 name = "mechtools"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/ekhadley/mechtools#75c8632b7846732df37ac995f34f186df1e96561" }
+source = { git = "ssh://git@github.com/ekhadley/mechtools#82312c08c43a3c9dd24172d67c9b62bee0c2c849" }
 dependencies = [
     { name = "httpx" },
     { name = "huggingface-hub" },
