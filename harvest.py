@@ -1,3 +1,4 @@
+#!./.venv/bin/python
 """
 Harvest residual-stream activations at segment end positions for a balanced sample of secret_number rollouts.
 
