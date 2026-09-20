@@ -71,7 +71,10 @@ show_table(["harvest", "vector", "contrast (n)", "position", "gap L16", "gap L36
 #%%
 
 #%% one saved vector through the lens: the tokens the direction is poised to verbalize at each layer (negate v for the negative class's side)
+
 VECTOR = Path("data/vectors/Qwen3.8-27B/cheat_vs_declined")
 v, vlayers = load_vector(VECTOR.parent, VECTOR.name)
 scores = {f"L{layer}": get_lens_logits(v[vlayers.index(layer)].to(model.device, model.W_U.dtype), layer, model, jlens) for layer in LAYERS}
 cluster_readout(scores, labels, model.tokenizer.decode, title=f"{VECTOR.parent.name}/{VECTOR.name}")
+
+#%%
