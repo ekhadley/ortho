@@ -2,8 +2,8 @@
 Difference-of-means direction candidates from the harvested secret_number activations (data/acts/<model>/, written by harvest.py):
 one [n_layers, d_model] tensor per contrast, covering every harvested layer.
 
-    uv run python make_vectors.py                        # every model dir under data/acts
-    uv run python make_vectors.py --models Qwen3.8-27B
+    uv run python make_vectors.py                        # every model dir under data/acts, reasoning-end token
+    uv run python make_vectors.py --models Qwen3.8-27B --pool mean      # <contrast>_mean vectors from the reasoning-span means
 
 Outputs, under data/vectors/<model>/ (tracked in git, unlike the rest of data/):
     <contrast>.safetensors   key "v": [n_layers, d_model] float32, row i is the direction at resid_post.<layers[i]>. Not normalized:
@@ -13,11 +13,14 @@ Outputs, under data/vectors/<model>/ (tracked in git, unlike the rest of data/):
 
 Position
 --------
-Every vector is a difference of class means over one activation per turn: the residual stream at the last content token of the turn's
-reasoning span, the token before </think> (spans[kind == "reasoning"]["end"] - 1 in the harvest sidecar). It is the latest point at which
-the turn's action is still unwritten, so "about to read the secret file" has to be represented there, and it is where a steering vector
-must act to change the action. Turns without a reasoning span (none emitted, or dropped by the harness) contribute no row. Only harvested
-rollouts are used, i.e. the seeded balanced sample from harvest.select: 150 cheating and 149 clean rollouts per model.
+Every vector is a difference of class means over one activation per turn, taken from the turn's reasoning span. --pool end (the default)
+uses the residual stream at the span's last content token, the token before </think> (spans[kind == "reasoning"]["end"] - 1 in the
+harvest sidecar, a resid_post.<i> row). It is the latest point at which the turn's action is still unwritten, so "about to read the
+secret file" has to be represented there, and it is where a steering vector must act to change the action. --pool mean uses the mean
+over the span's content tokens (the harvest's mean.<i> row for that span; Qwen3.6-27B's harvest predates that key) and writes
+<contrast>_mean, a direction present across the whole reasoning rather than at one token. Turns without a reasoning span (none emitted,
+or dropped by the harness) contribute no row. Only harvested rollouts are used, i.e. the seeded balanced sample from harvest.select:
+150 cheating and 149 clean rollouts per model.
 
 Classes (turn tt of rollout m, flags as written by import_rollouts.annotate_turns)
 --------------------------------------------------------------------------------
@@ -68,8 +71,8 @@ class mean norms per layer; at layer 36 on the 3.8 harvest the gap is about 10 f
 a mean residual norm of about 80 at reasoning tokens.
 
 Caveats: about 90 declined negatives, and mentions_secret is a substring match, so paraphrased deliberation counts as unaware. Every
-Qwen3.6-27B activation and most Qwen3.8-27B clean ones are off-policy (text written by another Qwen). Only span-end tokens were
-harvested, so a mean-over-CoT variant needs a re-harvest. The AUROCs above are read-out separability, not steering effect.
+Qwen3.6-27B activation and most Qwen3.8-27B clean ones are off-policy (text written by another Qwen). The AUROCs above are read-out
+separability, not steering effect, and were measured on the reasoning-end token.
 """
 
 import argparse
@@ -86,6 +89,10 @@ from mechtools import *
 ACTS, OUT = Path("data/acts"), Path("data/vectors")
 MIN_PER_CLASS = 10  # rollouts per class for a same-prefix group to count
 REPORT_LAYERS = (16, 36, 56)
+POOL = {  # --pool value: (tensor key prefix in the harvest, description for the sidecar)
+    "end": ("resid_post", "last content token of the turn's reasoning span"),
+    "mean": ("mean", "mean over the content tokens of the turn's reasoning span"),
+}
 
 
 def honest(tt: dict, m: dict) -> bool:
@@ -107,9 +114,9 @@ CONTRASTS = {  # name: (positive class, negative class); the same-prefix contras
 }
 
 
-def accumulate(model_dir: Path) -> tuple[dict, list[int]]:
+def accumulate(model_dir: Path, pool: str) -> tuple[dict, list[int]]:
     """(class, group) -> running sum [n_layers, d_model], sum of row norms [n_layers], row count. group is the source step for the prefix classes, else None."""
-    sums, layers = defaultdict(lambda: {"sum": 0.0, "norm": 0.0, "n": 0}), None
+    sums, layers, prefix = defaultdict(lambda: {"sum": 0.0, "norm": 0.0, "n": 0}), None, POOL[pool][0]
     for meta_path in pbar(sorted(model_dir.glob("*.json")), desc=f"reading {model_dir.name}"):
         m = json.loads(meta_path.read_text())
         assert layers is None or m["layers"] == layers, f"{meta_path}: layer list differs from the other rollouts"
@@ -117,15 +124,15 @@ def accumulate(model_dir: Path) -> tuple[dict, list[int]]:
         turns = {tt["turn_idx"]: tt for tt in m["turns"]}
         row = {p: i for i, p in enumerate(m["positions"])}
         members = defaultdict(list)
-        for s in m["spans"]:
+        for si, s in enumerate(m["spans"]):
             if s["kind"] != "reasoning":
                 continue
             for name, f in CLASSES.items():
                 if f(turns[s["turn"]], m):
-                    members[(name, m["source_step"] if name.startswith("prefix") else None)].append(row[s["end"] - 1])
+                    members[(name, m["source_step"] if name.startswith("prefix") else None)].append(si if pool == "mean" else row[s["end"] - 1])
         assert members, f"{meta_path}: no reasoning span falls in any class"
         with safe_open(meta_path.with_suffix(".safetensors"), "pt") as h:
-            X = t.stack([h.get_tensor(f"resid_post.{i}") for i in layers])  # [n_layers, n_positions, d_model] bf16
+            X = t.stack([h.get_tensor(f"{prefix}.{i}") for i in layers])  # [n_layers, n_rows, d_model] bf16
         for key, idx in members.items():
             x, acc = X[:, idx].float(), sums[key]
             acc["sum"] = acc["sum"] + x.double().sum(1)
@@ -160,13 +167,13 @@ def contrasts(sums: dict) -> dict[str, dict]:
     return out
 
 
-def save(model: str, name: str, c: dict, layers: list[int]) -> None:
+def save(model: str, name: str, c: dict, layers: list[int], pool: str) -> None:
     out = OUT / model
     out.mkdir(parents=True, exist_ok=True)
-    v = c["v"].float().contiguous()
+    v, name = c["v"].float().contiguous(), name + ("_mean" if pool == "mean" else "")
     assert t.isfinite(v).all() and v.shape[0] == len(layers), name
     save_file({"v": v}, out / f"{name}.safetensors")
-    meta = {"contrast": name, "harvest": model, "position": "last content token of the turn's reasoning span", "layers": layers, "gap": v.norm(dim=-1).tolist()}
+    meta = {"contrast": name, "harvest": model, "position": POOL[pool][1], "layers": layers, "gap": v.norm(dim=-1).tolist()}
     meta |= {k: (val.tolist() if isinstance(val, Tensor) else val) for k, val in c.items() if k != "v"}
     (out / f"{name}.json").write_text(json.dumps(meta))
 
@@ -186,14 +193,15 @@ def report(cs: dict, layers: list[int]) -> None:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--models", nargs="+", default=sorted(d.name for d in ACTS.iterdir() if d.is_dir()))
+    p.add_argument("--pool", choices=list(POOL), default="end", help="which activation of the reasoning span: its last content token, or the mean over its content tokens")
     args = p.parse_args()
     for model in args.models:
-        print(f"{purple}=== {model} ==={endc}")
-        sums, layers = accumulate(ACTS / model)
+        print(f"{purple}=== {model} ({args.pool}) ==={endc}")
+        sums, layers = accumulate(ACTS / model, args.pool)
         cs = contrasts(sums)
         report(cs, layers)
         for name, c in cs.items():
-            save(model, name, c, layers)
+            save(model, name, c, layers, args.pool)
         print(f"{green}wrote {len(cs)} vectors x {len(layers)} layers to {OUT / model}{endc}")
 
 

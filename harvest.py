@@ -7,10 +7,12 @@ Harvest residual-stream activations at segment end positions for a balanced samp
     uv run python harvest.py --skip-existing                   # resume: same seed gives the same sample, done rollouts are skipped
 
 One prefill per rollout (batch 1, no cache, no lm_head). Forward hooks on the decoder layers take the residual stream
-after each layer (resid_post.i, the input to layer i+1) at rollout_tokens.end_positions: the last content token of every
-segment and the special token closing it. Per rollout, under data/acts/<model tag>/<rollout_id with / -> __>:
-.safetensors with one [n_positions, d_model] bf16 tensor per layer, keyed resid_post.<i>, and a .json sidecar with the
-rollout's metadata, its turns minus their text, the token ids, the span table, the positions, and the layer list.
+after each layer (the input to layer i+1) at two granularities: resid_post.<i>, [n_positions, d_model], the rows at
+rollout_tokens.end_positions (the last content token of every segment and the special token closing it), and mean.<i>,
+[n_spans, d_model], the mean over each segment's content tokens (start to end, no special tokens), one row per span in the
+sidecar's span order. Both bf16, the means accumulated in float32. Per rollout, under data/acts/<model tag>/<rollout_id with
+/ -> __>: the .safetensors with those tensors per layer, and a .json sidecar with the rollout's metadata, its turns minus
+their text, the token ids, the span table, the positions, and the layer list.
 """
 
 import argparse
@@ -45,14 +47,16 @@ def decoder_layers(model) -> t.nn.ModuleList:
     return found[0]
 
 
-def capture(model, ids: list[int], positions: list[int], layers: list[int]) -> dict[str, Tensor]:
+def capture(model, ids: list[int], positions: list[int], spans: list[dict], layers: list[int]) -> dict[str, Tensor]:
+    assert all(s["end"] > s["start"] for s in spans), "empty span"
     acts, pos, blocks = {}, t.tensor(positions), decoder_layers(model)
 
-    def hook(module, args, output, name):
+    def hook(module, args, output, i):
         h = output[0] if isinstance(output, tuple) else output
-        acts[name] = h[0, pos.to(h.device)].cpu()
+        acts[f"resid_post.{i}"] = h[0, pos.to(h.device)].cpu()
+        acts[f"mean.{i}"] = t.stack([h[0, s["start"]:s["end"]].float().mean(0) for s in spans]).to(h.dtype).cpu()
 
-    handles = [blocks[i].register_forward_hook(lambda m, a, o, name=f"resid_post.{i}": hook(m, a, o, name)) for i in layers]
+    handles = [blocks[i].register_forward_hook(lambda m, a, o, i=i: hook(m, a, o, i)) for i in layers]
     with t.inference_mode():
         model.model(input_ids=t.tensor([ids], device=model.device), use_cache=False)
     for h in handles:
@@ -94,7 +98,7 @@ def main():
         text, ids, spans = rendered[r["rollout_id"]]
         positions = end_positions(spans)
         bar.set_postfix(tokens=len(ids), positions=len(positions))
-        acts = capture(model, ids, positions, layers)
+        acts = capture(model, ids, positions, spans, layers)
         stem = stems[r["rollout_id"]]
         save_file(acts, stem + ".safetensors")
         meta = {k: v for k, v in r.items() if k not in ("items", "turns")}
