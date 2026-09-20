@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "flash-linear-attention>=0.5.2",
+    "ipykernel>=7.3.0",
     "mechtools",
     "pyyaml>=6.0.3",
 ]
