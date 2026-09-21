@@ -222,4 +222,68 @@ fig.add_trace(go.Scatter(x=list(results), y=[r[2] for r in results.values()], na
 fig.add_trace(go.Scatter(x=list(results), y=[r[3] for r in results.values()], name="log P(odd) - log P(even)", mode="lines+markers"), secondary_y=True)
 fig.update_layout(title="parity of the answer as a one- or two-digit number", xaxis_title="steer layer", yaxis_title="probability", yaxis2_title="log ratio").show()
 
+#%% training a steering vector at one layer, added only at the last position of the reasoning-disabled prompt, to make the answer a cheat-class number. The answers
+# are hardcoded: the digits of each number 0-99 then <|im_end|>, so P(n) is the probability that the model's whole answer is exactly n. The loss is -log P(cheat class)
+# summed over train_prompts (name -> mask of the cheat-class numbers); the requested class is the other numbers. The vector starts at zero and is free in norm. It is
+# stored unit-normed and repeated over layers in `directions`, so the by-name readout and steering cells above take it, with steer_coef = the trained norm.
+
+steer_layer = 36
+lr = 0.05
+weight_decay = 0.01
+steps = 100
+log_every = 10
+batch_size = 16  # rows per forward pass. The loss needs every number's log-prob, so the chunks' graphs all stay alive until the backward.
+is_odd = t.arange(100, device=model.device) % 2 == 1
+train_prompts = {"eh": is_odd}  # the hack vector would be {"eh": is_odd, "oh": ~is_odd}
+numbers = [[model.tokenizer.convert_tokens_to_ids(c) for c in str(n)] + [model.tokenizer.eos_token_id] for n in range(100)]
+trained_name = f"trained_L{steer_layer}"
+
+def seq_logps(prompt: list[int], targets: list[list[int]]) -> Tensor:
+    """log P(target | prompt) of each target token sequence, teacher forced in chunks of batch_size; shorter targets are right-padded and the padding masked out. [n]"""
+    width = max(map(len, targets))
+    rows = t.tensor([prompt + target + [0] * (width - len(target)) for target in targets], device=model.device)
+    mask = t.tensor([[i < len(target) for i in range(width)] for target in targets], device=model.device)
+    lp = t.cat([model(chunk)[:, len(prompt) - 1:-1].float().log_softmax(-1) for chunk in rows.split(batch_size)])  # [n, width, vocab], the next-token distribution at each target position
+    return (lp.gather(-1, rows[:, len(prompt):, None])[..., 0] * mask).sum(1)
+
+def class_logps(v: Tensor) -> dict[str, tuple[Tensor, Tensor]]:
+    """Per training prompt, (log P(cheat class), log P(requested class)) with v added at the prompt's last position. seq_pos is a slice so that cached one-token generation steps, which lie past the prompt, get an empty slice and no addition."""
+    out = {}
+    for name, cheat in train_prompts.items():
+        prompt = runs[name][0]
+        with model.hooks(fwd_hooks=[(f"blocks.{steer_layer}.hook_resid_pre", make_add_bias_hook(v, seq_pos=slice(len(prompt) - 1, len(prompt))))]):
+            logp = seq_logps(prompt, numbers)
+        out[name] = (logp[cheat].logsumexp(0), logp[~cheat].logsumexp(0))
+    return out
+
+vec = t.nn.Parameter(t.zeros(model.cfg.d_model, device=model.device))
+opt = t.optim.AdamW([vec], lr=lr, weight_decay=weight_decay)
+history = []
+for step in range(steps + 1):
+    classes = class_logps(vec)
+    loss = -sum(cheat for cheat, _ in classes.values())
+    history.append([loss.item(), vec.norm().item(), *(p.exp().item() for pair in classes.values() for p in pair)])
+    if step % log_every == 0:
+        print(f"{step:4d}  loss {loss.item():.3f}  norm {vec.norm().item():6.2f}  " + "  ".join(f"{name}: P(cheat) {c.exp().item():.3f} P(requested) {r.exp().item():.3f}" for name, (c, r) in classes.items()))
+    if step < steps:  # the last pass only evaluates, so the printed values are those of the final vector
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+hist = t.tensor(history).T
+line([hist[0], hist[1]], names=["loss", "vector norm"], use_secondary_yaxis=True, labels={"x": "step", "y1": "-log P(cheat)", "y2": "norm"}, title=f"training {trained_name} on {list(train_prompts)}")
+line(list(hist[2:]), names=[f"{name} P({cls})" for name in train_prompts for cls in ("cheat", "requested")], labels={"x": "step", "y": "probability"}, title="probability that the answer is a number of each class")
+directions[trained_name] = (vec / vec.norm()).detach().repeat(model.cfg.n_layers, 1)
+print(f"directions[{trained_name!r}] holds the unit vector at every layer; steer_coef {vec.norm().item():.2f} reproduces the trained vector")
+
+#%% completions with and without the trained vector, temperature 1, from the first training prompt
+
+n_samples = 8
+new_toks = 8
+prompt = runs[next(iter(train_prompts))][0]
+steer = (f"blocks.{steer_layer}.hook_resid_pre", make_add_bias_hook(vec.detach(), seq_pos=slice(len(prompt) - 1, len(prompt))))
+for name, hooks in {"none": [], trained_name: [steer]}.items():
+    with model.hooks(fwd_hooks=hooks):
+        samples = sample_batch(model, t.tensor([prompt], device=model.device), n_samples, new_toks=new_toks)
+    print(f"{name}: " + " | ".join(repr(model.tokenizer.decode(s)) for s in samples))
+
 #%%
