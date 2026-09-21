@@ -47,7 +47,7 @@ MODEL_ID = "Qwen/Qwen3.6-27B"
 LENS = "qwen3.6-27b"
 model = load_bridge(MODEL_ID)
 jlens = load_jlens(f"{LENS}/j-lens/lens.pt", device=model.device)
-tlens = load_tlens(f"{LENS}/template-lens/templates+phrases_v3.safetensors", device=model.device)
+# tlens = load_tlens(f"{LENS}/template-lens/templates+phrases_v3.safetensors", device=model.device)
 print(f"{gray}j-lens {LENS}: J {tuple(jlens['J'][0].shape)}, source layers {jlens['source_layers']}{endc}")
 assert set(LAYERS) <= set(jlens["source_layers"]), "LAYERS outside the lens's source layers"
 labels, _ = cluster_vocab(model, k=1024)
