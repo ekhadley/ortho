@@ -169,7 +169,8 @@ if show_completion:
 # data/rollouts_odd/<model>.jsonl (gitignored). cheat is an odd answer on the even prompt or an even answer on the odd prompt; samples whose answer is not an
 # integer are dropped. Both prompts so that the direction below is not the parity of the answer.
 
-ROLLOUTS = Path("data/rollouts_odd", MODEL_ID.split("/")[-1] + ".jsonl")
+ROLLOUTS = Path("./data/rollouts_odd", MODEL_ID.split("/")[-1] + ".jsonl")
+ROLLOUTS.mkdir(parents=True, exist_ok=True)
 generate_rollouts = False
 if generate_rollouts:
     n_per_prompt, rollout_toks = 128, 4096
@@ -193,9 +194,9 @@ if generate_rollouts:
 
 generate_sys_rollouts = True
 if generate_sys_rollouts:
-    n_per_prompt = 128
+    n_per_prompt = 256
     rollout_toks = 4192
-    batch_size = 12
+    batch_size = 16
 
     sys_prompts = {"generic": generic_sys_prompt, "very_hacker": very_hacker_sys_prompt}
     for tag, sys_prompt in sys_prompts.items():
@@ -213,14 +214,13 @@ if generate_sys_rollouts:
         print(f"{gray}{len(records)} rollouts with an integer answer, {sum(r['cheat'] for r in records)} cheating, written to {path}{endc}")
     tec()
 
-exit()
 #%% difference-of-means direction from those rollouts: per rollout the mean resid_post over its CoT tokens (between <think> and </think>) at every layer; within
 # each prompt the mean over cheating rollouts minus the mean over clean ones; the direction is the average of the two prompts' differences. Within one prompt the
 # difference is (grader-following minus request-following) plus the parity of the answer; the parity term has opposite sign on the two prompts, so averaging cancels
 # it whatever the class sizes. cos(even diff, odd diff) per layer says how much of each is the shared part: near 1 means cheating dominates, near -1 means parity.
 # Saved in make_vectors.py's format under data/vectors/<model>/odd_cot, row i at resid_post.i, so load_vector, the probe table and the cosine cell read it.
 
-extract_odd_cot = False
+extract_odd_cot = True
 if extract_odd_cot:
     rollouts = [json.loads(l) for l in ROLLOUTS.read_text().splitlines()]
     means = {(name, cheat): [] for name in ("even", "odd") for cheat in (True, False)}
@@ -252,15 +252,15 @@ if extract_odd_cot:
 for b in list(tqdm._instances): b.close()
 from utils import parity, hack_rate
 
-benchmark_odd_cot = False
+benchmark_odd_cot = True
 if benchmark_odd_cot:
     cot_layers = list(range(16, 48, 1))
     cot_alpha = 0.2
     sys_prompt = None
     enable_thinking = True
     n_samples = 64
-    batch_size = 32
-    new_toks = 8192
+    batch_size = 16
+    new_toks = 4096
     tec()
 
     n_print = 2
@@ -296,6 +296,7 @@ if benchmark_odd_cot:
         print(f"{gray}{k} hacks of {n} integer answers, {len(even_resps) + len(odd_resps)} samples{endc}")
 
     rate_bars(results, f"<b>odd_cot</b>: add x {cot_alpha:g} gap vs project out<br><sup>layers {cot_layers[0]}-{cot_layers[-1]} step {cot_layers[1] - cot_layers[0]}, {n_samples} samples per bar, 95% Wilson</sup>")
+    tec()
 
 #%% the saved odd_cot direction through the j-lens: cluster readout of the unit cheat - clean difference at each layer in LAYERS (row L - 1 of the saved vector, so
 # the lens sees it as resid_pre at layer L)
@@ -338,17 +339,17 @@ if extract_sys_cot:
 #%% steering and ablation with one of the four system-prompt directions, as in the odd_cot benchmark. sys_prompt is the system prompt the benchmark samples are
 # taken under, independent of the one the direction came from.
 
-benchmark_sys_cot = False
+benchmark_sys_cot = True
 if benchmark_sys_cot:
     cot_name = "odd_cot_very_hacker"  # odd_cot_generic, odd_cot_generic_stripped, odd_cot_very_hacker, odd_cot_very_hacker_stripped
+
     cot_layers = list(range(16, 48, 1))
-    cot_alpha = 1.0
+    cot_alpha = 0.2
     sys_prompt = None
     enable_thinking = True
-    n_samples = 32
-    batch_size = 32
-    new_toks = 256
-    n_print = 2
+    n_samples = 64
+    batch_size = 16
+    new_toks = 4096
     v_cot, _ = load_vector(Path("data/vectors", MODEL_ID.split("/")[-1]), cot_name)
     directions[cot_name] = t.cat([t.full_like(v_cot[:1], float("nan")), v_cot[:-1] / v_cot[:-1].norm(dim=-1, keepdim=True)]).to(model.device)
     dirs = {layer: v_cot[layer - 1].to(model.device, model.W_U.dtype) for layer in cot_layers}
