@@ -280,7 +280,7 @@ if generate_rollouts:
 #%% rollouts under a system prompt: the same sampling from both hack prompts under the generic and the very_hacker system prompts, files tagged with the system
 # prompt's name, 256 per (system prompt, hack prompt).
 
-generate_sys_rollouts = True
+generate_sys_rollouts = False
 if generate_sys_rollouts:
     n_per_prompt = 256
     rollout_toks = 4096
@@ -318,7 +318,7 @@ if extract_odd_cot:
 # steer_sample); project out uses its unit vector. A saved row i is resid_post.i, so resid_pre layer L takes row L - 1: odd_cot_shifted has that layout (row 0 undefined),
 # and its unit version odd_cot_dir is what the completion cell above and the lens readout take.
 
-benchmark_odd_cot = False
+benchmark_odd_cot = True
 if benchmark_odd_cot:
     cot_layers = list(range(16, 48, 1))
     cot_alpha = 0.2
@@ -407,10 +407,10 @@ if extract_sys_means:
 #%% steering and ablation with one of the four system-prompt directions, as in the odd_cot benchmark. sys_prompt is the system prompt the benchmark samples are
 # taken under, independent of the one the direction came from.
 
-benchmark_sys_cot = True
+benchmark_sys_cot = False
 if benchmark_sys_cot:
-    # cot_name = "odd_cot_very_hacker"  # odd_cot_generic, odd_cot_generic_stripped, odd_cot_very_hacker, odd_cot_very_hacker_stripped
-    cot_name = "sys_diff_stripped"
+    cot_name = "odd_cot_very_hacker"  # odd_cot_generic, odd_cot_generic_stripped, odd_cot_very_hacker, odd_cot_very_hacker_stripped
+    # cot_name = "sys_diff_stripped"
     cot_layers = list(range(16, 48, 1))
     cot_alpha = 0.2
     sys_prompt = None
