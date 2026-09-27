@@ -113,6 +113,8 @@ from utils import load_sae, get_sae_pre_acts
 | Global constants | UPPER_SNAKE_CASE | `MODEL_ID`, `DEVICE` |
 | Color codes | lowercase | `purple`, `cyan`, `endc` |
 
+When a handful of things each have a name you'd type out anyway, give each its own variable: `generic_clean = ...`, not `rollouts["generic", False] = ...`. A dict keyed by hand-written string literals or by a loop over two or three named options is a namespace hiding inside a container, and it makes every read a lookup instead of a word. Use a dict only when the keys are data: they come from a file, a config, or a loop over something you'd actually vary. The same goes for computation: a nontrivial expression becomes a few lines, each binding a well-named intermediate (`even_diff = even_cheat.mean(0) - even_clean.mean(0)`), so the reader learns what each product is instead of parsing one chain of method calls.
+
 ---
 
 ## Type Hints
