@@ -34,7 +34,7 @@ odd_prompt_none = "Choose a random odd number."
 
 MODEL_ID = "Qwen/Qwen3.6-27B"
 LENS = "qwen3.6-27b"
-model = load_bridge(MODEL_ID)
+model = load_bridge(MODEL_ID, device_map="cuda")
 # jlens = load_jlens(f"{LENS}/j-lens/lens.pt", device=model.device)
 # tlens = load_tlens(f"{LENS}/template-lens/templates+phrases_v3.safetensors", device=model.device)
 # print(f"{gray}j-lens {LENS}: J {tuple(jlens['J'][0].shape)}, source layers {jlens['source_layers']}{endc}")
@@ -87,18 +87,18 @@ if bench_hack_rate:
 # the grader form and the grader's presence, so what is left of a hack prompt is what only the conflicting grader adds. grader is the analogous control: the benign grader
 # prompts with the bare prompts projected out.
 
-# runs = {name: resid(model, prompt) for name, prompt in {"eh": even_prompt_hack, "ec": even_prompt_clean, "oh": odd_prompt_hack, "oc": odd_prompt_clean, "en": even_prompt_none, "on": odd_prompt_none}.items()}
-# eh, ec, oh, oc, en, on = (h[:, -1] for _, h in runs.values())
-# controls = [ec, oc, en, on]
-# directions = {
-#     "conflict_even": reject(eh, controls),
-#     "conflict_odd": reject(oh, controls),
-#     "conflict": reject((eh + oh) / 2, controls),
-#     "grader": reject((ec + oc) / 2, [en, on]),
-# }
-# show_toks(runs["eh"][0], model.tokenizer)
-# cos = lambda a, b, layer: round(t.cosine_similarity(a[layer], b[layer], dim=0).item(), 3)
-# show_table(["layer", "even kept", "odd kept", "cos(even, odd)", "grader kept"], [(layer, cos(directions["conflict_even"], eh, layer), cos(directions["conflict_odd"], oh, layer), cos(directions["conflict_even"], directions["conflict_odd"], layer), cos(directions["grader"], (ec + oc) / 2, layer)) for layer in range(0, model.cfg.n_layers, 4)], title="kept = fraction of the prompt residual's norm outside its controls' span (layer 0 is the same token for every prompt, so it is noise)")
+runs = {name: resid(model, prompt) for name, prompt in {"eh": even_prompt_hack, "ec": even_prompt_clean, "oh": odd_prompt_hack, "oc": odd_prompt_clean, "en": even_prompt_none, "on": odd_prompt_none}.items()}
+eh, ec, oh, oc, en, on = (h[:, -1] for _, h in runs.values())
+controls = [ec, oc, en, on]
+directions = {
+    "conflict_even": reject(eh, controls),
+    "conflict_odd": reject(oh, controls),
+    "conflict": reject((eh + oh) / 2, controls),
+    "grader": reject((ec + oc) / 2, [en, on]),
+}
+show_toks(runs["eh"][0], model.tokenizer)
+cos = lambda a, b, layer: round(t.cosine_similarity(a[layer], b[layer], dim=0).item(), 3)
+show_table(["layer", "even kept", "odd kept", "cos(even, odd)", "grader kept"], [(layer, cos(directions["conflict_even"], eh, layer), cos(directions["conflict_odd"], oh, layer), cos(directions["conflict_even"], directions["conflict_odd"], layer), cos(directions["grader"], (ec + oc) / 2, layer)) for layer in range(0, model.cfg.n_layers, 4)], title="kept = fraction of the prompt residual's norm outside its controls' span (layer 0 is the same token for every prompt, so it is noise)")
 
 #%% one direction through the lens, by name
 
@@ -196,7 +196,7 @@ generate_sys_rollouts = True
 if generate_sys_rollouts:
     n_per_prompt = 256
     rollout_toks = 4192
-    batch_size = 16
+    batch_size = 12
 
     sys_prompts = {"generic": generic_sys_prompt, "very_hacker": very_hacker_sys_prompt}
     for tag, sys_prompt in sys_prompts.items():
