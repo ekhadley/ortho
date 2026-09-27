@@ -187,14 +187,14 @@ def sample_rollouts(n: int, sys_prompt: str | None, tag: str | None, batch_size:
         have = 0 if append_all or not path.exists() else len(path.read_text().splitlines())
         print(f"{bold}{tag or 'no'} system prompt, {name} prompt: {have} of {n} in {path}{endc}")
         ids = render(model.tokenizer, prompt, sys_prompt=sys_prompt, enable_thinking=True)
-        with path.open("a") as f:
-            for start in range(have, n, batch_size):
-                for gen in sample_rolling(model, t.tensor([ids], device=model.device), min(batch_size, n - start), batch_size=batch_size, new_toks=new_toks):
+        if have < n:
+            with path.open("a") as f:
+                for gen in stream_rolling(model, t.tensor([ids], device=model.device), n - have, batch_size=batch_size, new_toks=new_toks):  # each rollout is on disk as soon as it finishes
                     reasoning, _, content = model.tokenizer.decode(gen).partition("</think>")
                     cheat = None if parity(content) is None else parity(content) == (name == "even")
                     f.write(json.dumps({"prompt": name, "sys": tag, "ids": ids + gen, "reasoning": reasoning.strip(), "content": content.strip(), "cheat": cheat}) + "\n")
-                f.flush()
-                tec()
+                    f.flush()
+            tec()
         records = [json.loads(l) for l in path.read_text().splitlines()]
         print(f"{gray}{path}: {len(records)} rollouts, {sum(r['cheat'] is None for r in records)} without an integer answer, {sum(bool(r['cheat']) for r in records)} cheating{endc}")
 
