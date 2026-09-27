@@ -198,6 +198,7 @@ if generate_sys_rollouts:
     rollout_toks = 4192
     batch_size = 12
 
+    tec()
     sys_prompts = {"generic": generic_sys_prompt, "very_hacker": very_hacker_sys_prompt}
     for tag, sys_prompt in sys_prompts.items():
         records = []
