@@ -19,11 +19,10 @@ MODEL_NAME = MODEL_ID.split("/")[-1]
 model = load_bridge(MODEL_ID, device_map="cuda")
 
 lens_name = "qwen3.6-27b"
-# jlens = load_jlens(f"{LENS}/j-lens/lens.pt", device=model.device)
-# tlens = load_tlens(f"{LENS}/template-lens/templates+phrases_v3.safetensors", device=model.device)
-# print(f"{gray}j-lens {LENS}: J {tuple(jlens['J'][0].shape)}, source layers {jlens['source_layers']}{endc}")
-# assert set(LAYERS) <= set(jlens["source_layers"]), "LAYERS outside the lens's source layers"
-# labels, _ = cluster_vocab(model, k=1024)
+jlens = load_jlens(f"{lens_name}/j-lens/lens.pt", device=model.device)
+tlens = load_tlens(f"{lens_name}/template-lens/templates+phrases_v3.safetensors", device=model.device)
+print(f"{gray}j-lens {lens_name}: J {tuple(jlens['J'][0].shape)}, source layers {jlens['source_layers']}{endc}")
+labels, _ = cluster_vocab(model, k=1024)
 
 #%%
 
@@ -430,12 +429,12 @@ if benchmark_sys_cot:
 
 #%% the four system-prompt directions through the j-lens, one readout each, as for odd_cot
 
-show_sys_cot_readout = False
+show_sys_cot_readout = True
 if show_sys_cot_readout:
     # cot_readout("odd_cot_generic")
     # cot_readout("odd_cot_generic_stripped")
-    # cot_readout("odd_cot_very_hacker")
+    cot_readout("odd_cot_very_hacker")
     # cot_readout("odd_cot_very_hacker_stripped")
-    cot_readout("sys_mean_very_hacker_stripped")
+    # cot_readout("sys_mean_very_hacker_stripped")
 
 #%%
