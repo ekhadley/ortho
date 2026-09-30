@@ -10,6 +10,7 @@ Outputs, under data/vectors/<model>/ (tracked in git, unlike the rest of data/):
                              |v[i]| is the distance between the two class means at that layer, the natural unit for a steering coefficient.
     <contrast>.json          the class definitions and sizes, the layer list, and per layer the gap |v| and the mean residual norm of each
                              class's rows, so a coefficient can also be set relative to the typical residual norm.
+    Every name here starts with sn_ (secret_number); odd_number_lens.py saves its grader_ directions in the same dirs and format.
 
 Position
 --------
@@ -37,11 +38,11 @@ Classes (turn tt of rollout m, flags as written by import_rollouts.annotate_turn
 
 Contrasts
 ---------
-    cheat_vs_declined             mean(cheat) - mean(declined)      the decision direction. Try this first.
-    cheat_vs_honest               mean(cheat) - mean(honest)        heretic's last-prompt-token DoM transplanted to the turn level. The naive default.
-    same_prefix_cheat_vs_clean    mean(prefix_cheat) - mean(prefix_clean) within each source-step group that has at least MIN_PER_CLASS
+    sn_cheat_vs_declined          mean(cheat) - mean(declined)      the decision direction. Try this first.
+    sn_cheat_vs_honest            mean(cheat) - mean(honest)        heretic's last-prompt-token DoM transplanted to the turn level. The naive default.
+    sn_same_prefix_cheat_vs_clean mean(prefix_cheat) - mean(prefix_clean) within each source-step group that has at least MIN_PER_CLASS
                                   rollouts in both classes, averaged over those groups. Identical context on both sides of the contrast.
-    salience_declined_vs_unaware  mean(declined) - mean(unaware)    a control, not a steering candidate: "the secret file is under discussion".
+    sn_declined_vs_unaware        mean(declined) - mean(unaware)    a salience control, not a steering candidate: "the secret file is under discussion".
 
 Why the declined negatives (measured 2026-09-19 on both harvests, held out by rollout, layer 36; the scratch analysis is not in the repo)
 -------------------------------------------------------------------------------------------------------------------------------------
@@ -50,12 +51,12 @@ turns guessing. Against all honest turns the reasoning-end DoM separates held-ou
 control is 0.88 and it separates cheat turns from declined turns at only 0.65: it mostly encodes that the secret file is being talked
 about. Against the declined negatives the direction is near-orthogonal to the salience control (cosine below 0.1), separates cheat from declined at
 0.82 and cheat from all honest at 0.90. The two are algebraically related. With honest = declined + unaware,
-    cheat_vs_honest = cheat_vs_declined + (n_unaware / n_honest) * salience_declined_vs_unaware,
-so cheat_vs_declined is cheat_vs_honest with the salience component projected out, the analog of heretic's default projected
+    sn_cheat_vs_honest = sn_cheat_vs_declined + (n_unaware / n_honest) * sn_declined_vs_unaware,
+so sn_cheat_vs_declined is sn_cheat_vs_honest with the salience component projected out, the analog of heretic's default projected
 abliteration (which projects the harmless-mean direction out of its DoM).
 The group qwen-qwen3.8-27B/2026-08-21_08-21-09/run-11/step-1 (two shared prefix turns, then 46 harvested continuations that cheat on
-their first own turn and 15 that never cheat) is the only group large enough for same_prefix_cheat_vs_clean today; cheat_vs_declined
-computed without that group separates its decisions at 0.81, cheat_vs_honest at 0.77.
+their first own turn and 15 that never cheat) is the only group large enough for sn_same_prefix_cheat_vs_clean today; sn_cheat_vs_declined
+computed without that group separates its decisions at 0.81, sn_cheat_vs_honest at 0.77.
 Positions checked and rejected: the closing token of the env output before the turn separates at 0.96 already at layer 0, i.e. it is the
 identity of the preceding tool output (matched on turn index and path-known it drops to 0.73); the tool-call end is the command text
 (0.95 at layer 0); pooling every harvested position of cheating vs clean rollouts gives 0.83 in general and 0.59 on the decision split;
@@ -67,7 +68,7 @@ General separation is flat (0.92-0.95) from layer 12 to 62 of 64; the decision s
 rotate with depth: cosine 0.55-0.78 between layers 8 apart, 0.1-0.2 between layers 40 apart. v points toward cheating: adding
 alpha * v[L] / |v[L]| to the layer-L residual, with alpha in units of the gap |v[L]|, should raise the cheat rate, and projecting v out
 (heretic's W - w * v v^T W on o_proj and down_proj, or h - (h . v̂) v̂ at runtime) should lower it. The json sidecar gives |v| and the
-class mean norms per layer; at layer 36 on the 3.8 harvest the gap is about 10 for cheat_vs_declined and 23 for cheat_vs_honest against
+class mean norms per layer; at layer 36 on the 3.8 harvest the gap is about 10 for sn_cheat_vs_declined and 23 for sn_cheat_vs_honest against
 a mean residual norm of about 80 at reasoning tokens.
 
 Caveats: about 90 declined negatives, and mentions_secret is a substring match, so paraphrased deliberation counts as unaware. Every
@@ -82,9 +83,10 @@ from pathlib import Path
 
 import torch as t
 from safetensors import safe_open
-from safetensors.torch import save_file
 
 from mechtools import *
+
+from utils import save_vector
 
 ACTS, OUT = Path("data/acts"), Path("data/vectors")
 MIN_PER_CLASS = 10  # rollouts per class for a same-prefix group to count
@@ -108,9 +110,9 @@ CLASSES = {
     "prefix_clean": lambda tt, m: m["resumed"] and tt["turn_idx"] == m["prefix_turns"] and not m["cheated"],
 }
 CONTRASTS = {  # name: (positive class, negative class); the same-prefix contrast is assembled per group in contrasts()
-    "cheat_vs_declined": ("cheat", "declined"),
-    "cheat_vs_honest": ("cheat", "honest"),
-    "salience_declined_vs_unaware": ("declined", "unaware"),
+    "sn_cheat_vs_declined": ("cheat", "declined"),
+    "sn_cheat_vs_honest": ("cheat", "honest"),
+    "sn_declined_vs_unaware": ("declined", "unaware"),
 }
 
 
@@ -156,7 +158,7 @@ def contrasts(sums: dict) -> dict[str, dict]:
     groups = sorted(g for (name, g) in sums if name == "prefix_cheat" and n(("prefix_cheat", g)) >= MIN_PER_CLASS and n(("prefix_clean", g)) >= MIN_PER_CLASS)
     assert groups, f"no source-step group has {MIN_PER_CLASS} rollouts in both prefix classes"
     per_group = [(mean(sums, ("prefix_cheat", g)), mean(sums, ("prefix_clean", g))) for g in groups]
-    out["same_prefix_cheat_vs_clean"] = {
+    out["sn_same_prefix_cheat_vs_clean"] = {
         "v": sum(mp - mn for (mp, _, _), (mn, _, _) in per_group) / len(groups),
         "pos_norm": sum(np_ for (_, np_, _), _ in per_group) / len(groups),
         "neg_norm": sum(nn for _, (_, nn, _) in per_group) / len(groups),
@@ -168,14 +170,11 @@ def contrasts(sums: dict) -> dict[str, dict]:
 
 
 def save(model: str, name: str, c: dict, layers: list[int], pool: str) -> None:
-    out = OUT / model
-    out.mkdir(parents=True, exist_ok=True)
-    v, name = c["v"].float().contiguous(), name + ("_mean" if pool == "mean" else "")
-    assert t.isfinite(v).all() and v.shape[0] == len(layers), name
-    save_file({"v": v}, out / f"{name}.safetensors")
-    meta = {"contrast": name, "harvest": model, "position": POOL[pool][1], "layers": layers, "gap": v.norm(dim=-1).tolist()}
+    name = name + ("_mean" if pool == "mean" else "")
+    assert c["v"].shape[0] == len(layers), name
+    meta = {"harvest": model, "position": POOL[pool][1], "layers": layers}
     meta |= {k: (val.tolist() if isinstance(val, Tensor) else val) for k, val in c.items() if k != "v"}
-    (out / f"{name}.json").write_text(json.dumps(meta))
+    save_vector(OUT / model, name, c["v"], meta)
 
 
 def report(cs: dict, layers: list[int]) -> None:

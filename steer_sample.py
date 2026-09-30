@@ -3,7 +3,7 @@ Single-turn steering test on secret_number prefixes: render a rollout prefix, sa
 stream, classify the sampled tool call with the importer's own cheat rule. No sandbox: the turn is never executed.
 
     uv run python steer_sample.py --name first                                        # GPU box: the default sweep below on all five prefixes
-    uv run python steer_sample.py --name first --conditions none ablate:cheat_vs_declined --prefixes run-61 --n 8 --max-new-tokens 512
+    uv run python steer_sample.py --name first --conditions none ablate:sn_cheat_vs_declined --prefixes run-61 --n 8 --max-new-tokens 512
     uv run python steer_sample.py --report data/steer/Qwen3.8-27B/first.jsonl         # anywhere: the table
     uv run python steer_sample.py --html data/steer/Qwen3.8-27B/first.jsonl           # anywhere: a browsable first.html next to it
 
@@ -37,7 +37,7 @@ Spec strings. Vectors are make_vectors.py's <vectors dir>/<name>.safetensors, ke
     none                              no hook
     add:<name>:<layer>:<alpha>        h <- h + alpha * v at that layer's output; v is the class-mean difference, so alpha is in units of the gap
                                       (the record's add_norm is the absolute norm added; gaps differ per vector, 10.5 vs 21-23 at L36 on qwen3.8)
-    add:random:<layer>:<alpha>        a seeded Gaussian direction scaled to cheat_vs_declined's gap at that layer: the equal-norm control
+    add:random:<layer>:<alpha>        a seeded Gaussian direction scaled to sn_cheat_vs_declined's gap at that layer: the equal-norm control
     ablate:<name>                     h <- h - (h . u) u at every layer in the sidecar, each layer with its own unit direction u
     ablate:<name>:<layer>             one layer's direction projected out at every layer, heretic's form
 Hooks sit on the decoder layer outputs, the harvest site, and act at every position, prefix and generated, which is what a weight edit does.
@@ -64,10 +64,11 @@ import time
 from pathlib import Path
 
 import torch as t
-from safetensors import safe_open
 from transformers import AutoTokenizer
 
 from mechtools import *
+
+from utils import load_vector
 
 from harvest import decoder_layers
 from import_rollouts import load_rollouts
@@ -77,7 +78,7 @@ OUT = Path("data/steer")
 CALL = re.compile(r"<tool_call>\s*<function=(\w+)>(.*?)</function>\s*</tool_call>", re.S)
 PARAM = re.compile(r"<parameter=(\w+)>\n?(.*?)\n?</parameter>", re.S)
 ACTIONS = ("cheat", "probe", "guess", "submit", "other", "none")
-SWEEP = ["none"] + [f"add:cheat_vs_declined:36:{a}" for a in (1, 2, 4, 8)] + ["add:salience_declined_vs_unaware:36:2", "add:cheat_vs_honest:36:2", "add:random:36:4", "ablate:cheat_vs_declined", "ablate:cheat_vs_honest"]
+SWEEP = ["none"] + [f"add:sn_cheat_vs_declined:36:{a}" for a in (1, 2, 4, 8)] + ["add:sn_declined_vs_unaware:36:2", "add:sn_cheat_vs_honest:36:2", "add:random:36:4", "ablate:sn_cheat_vs_declined", "ablate:sn_cheat_vs_honest"]
 
 
 def prefixes(rollouts: list[dict]) -> dict[str, dict]:
@@ -93,12 +94,6 @@ def prefix_text(tok, r: dict) -> str:
     return tok.apply_chat_template(rollout_messages(r), tools=rollout_tools(r), tokenize=False, preserve_thinking=True, add_generation_prompt=True)
 
 
-def load_vector(vectors: Path, name: str) -> tuple[Tensor, list[int]]:
-    with safe_open(vectors / f"{name}.safetensors", "pt") as h:
-        V = h.get_tensor("v")
-    return V, json.loads((vectors / f"{name}.json").read_text())["layers"]
-
-
 def hooks(model, spec: str, vectors: Path, seed: int) -> tuple[list, float]:
     """Register the intervention on the decoder layers. Returns the handles and the absolute norm added per position (0 for ablation)."""
     kind, *args = spec.split(":")
@@ -107,7 +102,7 @@ def hooks(model, spec: str, vectors: Path, seed: int) -> tuple[list, float]:
     blocks, dev, dt = decoder_layers(model), model.device, model.dtype
     if kind == "add":
         name, layer, alpha = args[0], int(args[1]), float(args[2])
-        V, layers = load_vector(vectors, "cheat_vs_declined" if name == "random" else name)
+        V, layers = load_vector(vectors, "sn_cheat_vs_declined" if name == "random" else name)
         v = V[layers.index(layer)]
         if name == "random":
             g = t.randn(v.shape, generator=t.Generator().manual_seed(seed))
