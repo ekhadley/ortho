@@ -11,11 +11,11 @@ from steer_sample import load_vector
 from utils import render, resid, reject, make_proj_out_hook, parity, hack_rate, rate_bars, cot_span, resid_post_mean, save_vector, find, lens_readout
 
 t.set_grad_enabled(False)
+MODEL_ID = "Qwen/Qwen3.6-27B"
+MODEL_NAME = MODEL_ID.split("/")[-1]
 
 #%%
 
-MODEL_ID = "Qwen/Qwen3.6-27B"
-MODEL_NAME = MODEL_ID.split("/")[-1]
 model = load_bridge(MODEL_ID, device_map="cuda")
 
 lens_name = "qwen3.6-27b"
@@ -438,3 +438,42 @@ if show_sys_cot_readout:
     # cot_readout("sys_mean_very_hacker_stripped")
 
 #%%
+# hack rate of every Qwen3.6-27B condition on disk, one bar each: hacks / integer answers, both hack prompts pooled. Reads files only, no model needed. Reasoning-on
+# rollouts are the data/rollouts_odd jsonl files (no system prompt, generic, very_hacker) and the odd_cot benchmark's records in intervened_rollouts (its none control,
+# add, project out; the 16-sample sys_diff_stripped records are test runs and left out). Reasoning-off samples exist only as the OpenRouter (chutes) runs in the
+# odd-number-hacking repo, even prompt only, so those bars are not averaged over the two prompts; the repo's reasoning-on run is beside them as a check against the
+# local no-system-prompt bar. number_only: that run's saved prompt is the plain hack prompt, so what the tag changed is not recorded.
+
+hack_rate_overview = True
+if hack_rate_overview:
+    OPENROUTER_RESULTS = Path("/home/ek/wgmn/odd-number-hacking/results")
+
+    def rollout_counts(tag: str | None) -> tuple[int, int]:
+        rollouts = load_rollouts(tag)
+        return sum(r["cheat"] for r in rollouts), len(rollouts)
+    def openrouter_counts(name: str) -> tuple[int, int]:
+        counts = json.loads((OPENROUTER_RESULTS / f"{name}.json").read_text())["metadata"]["hack_rate"]
+        return counts["odd"], counts["odd"] + counts["even"]
+
+    no_sys = rollout_counts(None)
+    generic = rollout_counts("generic")
+    very_hacker = rollout_counts("very_hacker")
+    odd_cot_none = json.loads((EVAL_ROLLOUT_DIR / "2026-09-27_20-35-52_none.json").read_text())
+    odd_cot_add = json.loads((EVAL_ROLLOUT_DIR / "2026-09-27_21-03-05_add.json").read_text())
+    odd_cot_proj = json.loads((EVAL_ROLLOUT_DIR / "2026-09-27_21-26-28_project_out.json").read_text())
+    openrouter_no_reasoning_number_only = openrouter_counts("qwen3.6-27b_no_reasoning_number_only")
+    openrouter_no_reasoning = openrouter_counts("qwen3.6-27b_no_reasoning")
+    openrouter_reasoning = openrouter_counts("qwen3.6-27b")
+    results = {
+        "reasoning off<br>number only<br>OpenRouter,<br>even prompt only": openrouter_no_reasoning_number_only,
+        "reasoning off<br>OpenRouter,<br>even prompt only": openrouter_no_reasoning,
+        "reasoning on<br>OpenRouter,<br>even prompt only": openrouter_reasoning,
+        "no system prompt": no_sys,
+        "generic<br>system prompt": generic,
+        "very_hacker<br>system prompt": very_hacker,
+        "odd_cot benchmark<br>none": (odd_cot_none["hacks"], odd_cot_none["integers"]),
+        f"odd_cot benchmark<br>add x {odd_cot_add['alpha']:g} gap, L{odd_cot_add['layers'][0]}-{odd_cot_add['layers'][-1]}": (odd_cot_add["hacks"], odd_cot_add["integers"]),
+        f"odd_cot benchmark<br>project out, L{odd_cot_proj['layers'][0]}-{odd_cot_proj['layers'][-1]}": (odd_cot_proj["hacks"], odd_cot_proj["integers"]),
+    }
+    colors = ["#7570b3"] * 3 + ["#9e9e9e"] * 4 + ["#d95f02", "#1b9e77"]
+    rate_bars(results, "<b>Qwen3.6-27B</b>: hack rate by condition<br><sup>hacks / integer answers, 95% Wilson. Local bars: reasoning on, both hack prompts pooled, no system prompt unless named. OpenRouter bars: even prompt only</sup>", colors=colors, width=1700)

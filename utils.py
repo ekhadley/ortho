@@ -62,14 +62,14 @@ def hack_rate(model, even_hack: str, odd_hack: str, n: int, **kw) -> tuple[list[
     return even_resps, odd_resps, even_odd + odd_n - odd_odd, even_n + odd_n
 
 
-def rate_bars(results: dict[str, tuple[int, int]], title: str) -> None:
-    """One bar per condition, hacks / integer answers with a 95% Wilson interval and the counts in the tick label. A condition with no integer answers gets no bar."""
+def rate_bars(results: dict[str, tuple[int, int]], title: str, colors: list[str] = ("#9e9e9e", "#d95f02", "#1b9e77"), width: int = 640) -> None:
+    """One bar per condition, hacks / integer answers with a 95% Wilson interval and the counts in the tick label, colored in order. A condition with no integer answers gets no bar."""
     rates = [k / n if n else float("nan") for k, n in results.values()]
     lo, hi = zip(*(wilson(k, n) for k, n in results.values()))
     ticks = [f"<b>{name}</b><br>{k / n:.0%} ({k}/{n})" if n else f"<b>{name}</b><br>no integer answers" for name, (k, n) in results.items()]
-    fig = bar(t.tensor(rates), x=ticks, template="simple_white", labels={"x": "", "y": "hack rate"}, title=title, size=(450, 640), margin=60, return_fig=True)
-    fig.update_traces(marker_color=["#9e9e9e", "#d95f02", "#1b9e77"], error_y={"type": "data", "array": [h - r for h, r in zip(hi, rates)], "arrayminus": [r - l for r, l in zip(rates, lo)], "thickness": 1.5, "width": 6})
-    fig.update_layout(yaxis_range=[0, 1], yaxis_tickformat=".0%", bargap=0.45, font_size=14, title_x=0.5, title_font_size=16).show()
+    fig = bar(t.tensor(rates), x=ticks, template="simple_white", labels={"x": "", "y": "hack rate"}, title=title, size=(450, width), margin=60, return_fig=True)
+    fig.update_traces(marker_color=list(colors), error_y={"type": "data", "array": [h - r for h, r in zip(hi, rates)], "arrayminus": [r - l for r, l in zip(rates, lo)], "thickness": 1.5, "width": 6})
+    fig.update_layout(yaxis_range=[0, 1], yaxis_tickformat=".0%", xaxis_tickangle=0, bargap=0.45, font_size=14, title_x=0.5, title_font_size=16).show()
 
 
 def cot_span(ids: list[int], tokenizer) -> tuple[int, int]:
