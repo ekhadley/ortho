@@ -130,16 +130,28 @@ if show_completion:
 
 harvest_cot = True
 if harvest_cot:
-    none = load_rollouts()
+    no_sys = load_rollouts()
     generic = load_rollouts("generic")
     very_hacker = load_rollouts("very_hacker")
     tok = model.tokenizer
-    print(f"{gray}none: {sum(r['cheat'] for r in none)} cheating of {len(none)}. generic: {sum(r['cheat'] for r in generic)} of {len(generic)}. very_hacker: {sum(r['cheat'] for r in very_hacker)} of {len(very_hacker)}{endc}")
+    print(f"{gray}no_sys: {sum(r['cheat'] for r in no_sys)} cheating of {len(no_sys)}. generic: {sum(r['cheat'] for r in generic)} of {len(generic)}. very_hacker: {sum(r['cheat'] for r in very_hacker)} of {len(very_hacker)}{endc}")
+    #%%
 
-    none_even_cheat = cot_means(model, [r["ids"] for r in none if r["cheat"] and r["prompt"] == "even"])
-    none_even_clean = cot_means(model, [r["ids"] for r in none if not r["cheat"] and r["prompt"] == "even"])
-    none_odd_cheat = cot_means(model, [r["ids"] for r in none if r["cheat"] and r["prompt"] == "odd"])
-    none_odd_clean = cot_means(model, [r["ids"] for r in none if not r["cheat"] and r["prompt"] == "odd"])
+    no_sys_even_cheat_rollouts = [r["ids"] for r in no_sys if r["cheat"] and r["prompt"] == "even"]
+    no_sys_odd_cheat_rollouts = [r["ids"] for r in no_sys if r["cheat"] and r["prompt"] == "odd"]
+    no_sys_even_clean_rollouts = [r["ids"] for r in no_sys if not r["cheat"] and r["prompt"] == "even"]
+    no_sys_odd_clean_rollouts = [r["ids"] for r in no_sys if not r["cheat"] and r["prompt"] == "odd"]
+    print(len(no_sys_even_cheat_rollouts))
+    print(len(no_sys_odd_cheat_rollouts))
+    print(len(no_sys_even_clean_rollouts))
+    print(len(no_sys_odd_clean_rollouts))
+    #%%
+    no_sys_even_cheat = cot_means(model, no_sys_even_cheat_rollouts)
+    no_sys_even_clean = cot_means(model, no_sys_even_clean_rollouts)
+    no_sys_odd_cheat = cot_means(model, no_sys_odd_cheat_rollouts)
+    no_sys_odd_clean = cot_means(model, no_sys_odd_clean_rollouts)
+
+    #%%
 
     # generic_even_cheat = cot_means(model, [r["ids"] for r in generic if r["cheat"] and r["prompt"] == "even"])
     # generic_even_clean = cot_means(model, [r["ids"] for r in generic if not r["cheat"] and r["prompt"] == "even"])
@@ -166,18 +178,18 @@ if harvest_cot:
 # how much of each prompt's difference is the shared part: near 1 means cheating dominates, near -1 means answer parity. Saved as grader_parity_cheat_vs_clean, so load_vector
 # and the readout cell read it.
 
-extract_cot = False
+extract_cot = True
 if extract_cot:
     unit_sphere = True  # each rollout's CoT mean on the unit sphere before averaging, so no rollout dominates by norm.
-    even_cheat_rows = normed(none_even_cheat) if unit_sphere else none_even_cheat
-    even_clean_rows = normed(none_even_clean) if unit_sphere else none_even_clean
-    odd_cheat_rows = normed(none_odd_cheat) if unit_sphere else none_odd_cheat
-    odd_clean_rows = normed(none_odd_clean) if unit_sphere else none_odd_clean
+    even_cheat_rows = normed(no_sys_even_cheat) if unit_sphere else no_sys_even_cheat
+    even_clean_rows = normed(no_sys_even_clean) if unit_sphere else no_sys_even_clean
+    odd_cheat_rows = normed(no_sys_odd_cheat) if unit_sphere else no_sys_odd_cheat
+    odd_clean_rows = normed(no_sys_odd_clean) if unit_sphere else no_sys_odd_clean
     even_diff = even_cheat_rows.mean(0) - even_clean_rows.mean(0)
     odd_diff = odd_cheat_rows.mean(0) - odd_clean_rows.mean(0)
     direction = (even_diff + odd_diff) / 2
-    cheat_norm = t.cat([none_even_cheat, none_odd_cheat]).norm(dim=-1).mean(0)  # raw, for scale
-    clean_norm = t.cat([none_even_clean, none_odd_clean]).norm(dim=-1).mean(0)
+    cheat_norm = t.cat([no_sys_even_cheat, no_sys_odd_cheat]).norm(dim=-1).mean(0)  # raw, for scale
+    clean_norm = t.cat([no_sys_even_clean, no_sys_odd_clean]).norm(dim=-1).mean(0)
     save_vector(vector_dir, "grader_parity_cheat_vs_clean", direction, {
         "harvest": MODEL_NAME, "position": "mean over CoT tokens of resid_post, cheat minus clean within each hack prompt, averaged over the two prompts", "stripped": False, "unit_normalized": unit_sphere,
         "positive": "cheating rollout (answer follows the grader)", "negative": "clean rollout (answer follows the request)",
@@ -278,7 +290,7 @@ if extract_sys_means:
 # Saved raw in save_vector's format as grader_parity_very_hacker_vs_generic_prompt, so the readout and hobo cells read it. cos(even diff,
 # odd diff) says whether both prompts see the same shift; the cosine with grader_parity_very_hacker_vs_generic compares it with the CoT-mean version from the rollouts.
 
-extract_sys_prompt_diff = True
+extract_sys_prompt_diff = False
 if extract_sys_prompt_diff:
     show_toks(render(model.tokenizer, even_prompt_hack, sys_prompt=very_hacker_sys_prompt), model.tokenizer)
     even_very_hacker = resid_post(model, render(model.tokenizer, even_prompt_hack, sys_prompt=very_hacker_sys_prompt))[:, -1]
