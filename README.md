@@ -56,7 +56,7 @@ You need:
 
 - [uv](https://docs.astral.sh/uv/), and access to the private `mechtools` repo it installs.
 - Docker, for secret_number and impossible_bench. Their containers run on your machine.
-- A GPU machine that fits a 27B model (55 GB of weights), reachable as `ssh vast`. The scripts assume a [vast.ai](https://vast.ai) container with a volume at `/workspace`.
+- A GPU machine that fits a 27B model (55 GB of weights), reachable as `ssh vast`. The scripts assume a [vast.ai](https://vast.ai) container and keep the serving venv and the weights in its home directory, so its disk needs room for both.
 
 ```bash
 uv sync

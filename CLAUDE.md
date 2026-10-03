@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Python 3.13, managed by uv. `uv sync` to update the env, `uv add <pkg>` to add deps, `uv run python <file>.py` to run scripts. `mechtools` is installed from git; `uv sync --upgrade-package mechtools` pulls a new version.
 - No tests, linter, or build step exist. Do not invent them.
-- Local GPU is 12GB. Anything beyond a ~4B model in bf16 belongs on the GPU box (`vast` ssh alias). `scripts/` holds the box scripts, all run from this machine except `serve.sh`: `init_vast.sh` once per new container (shell setup, github key, claude code cli), `setup_vast.sh` to install the serving venv and weights on the volume if missing and start `serve.sh` (the vLLM command, prefix caching on) in a tmux session named serve.
+- Local GPU is 12GB. Anything beyond a ~4B model in bf16 belongs on the GPU box (`vast` ssh alias). `scripts/` holds the box scripts, all run from this machine except `serve.sh`: `init_vast.sh` once per new container (shell setup, github key, claude code cli), `setup_vast.sh` to install the serving venv and weights under the box's home directory if missing and start `serve.sh` (the vLLM command, prefix caching on) in a tmux session named serve.
 
 ## What this project is
 

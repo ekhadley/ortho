@@ -42,7 +42,7 @@ alias lg="eza -la --git  | grep -i"
 alias big="eza -ll --total-size -s=size"
 alias nsmi="nvidia-smi"
 export PS1='\[\e[1;32m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '
-[[ -d /workspace/ortho ]] && cd /workspace/ortho
+[[ -d ~/ortho ]] && cd ~/ortho
 RC
 echo "export HF_TOKEN=\"$HF_TOKEN\"" >> ~/.bashrc
 EOF
