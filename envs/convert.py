@@ -1,7 +1,7 @@
 """
 Inspect logs to rollout records, the only source of rollouts in this repo: one jsonl line per sample (rollout_id, model, cheated, first_cheat_turn,
 turns[] with reasoning / message / tool_calls / commands / env_outputs and the per-kind cheat flags, items as chat-completions messages,
-env, config_id, condition, the vectors dir, and a labels dict from the sample's score). ids is the transcript as the model saw it, the last
+env, config_id, condition, the vectors dir, the run's whole EvalCfg as cfg, and a labels dict from the sample's score). ids is the transcript as the model saw it, the last
 request's prompt tokens followed by its completion, when the server returned token ids (extra_body return_token_ids in the config), else None.
 
     uv run python envs/convert.py logs/*.eval            # one data/inspect/<env>/<log name>.jsonl per log
@@ -109,7 +109,7 @@ def convert(log: EvalLog) -> list[dict]:
     records = []
     for sample in log.samples:
         its = items(sample.messages)
-        r = {"rollout_id": f"{stem}/{sample.id}/{sample.epoch}", "env": meta["env"], "config_id": meta["config_id"], "condition": meta["condition"], "vectors": meta["vectors"], "model": model,
+        r = {"rollout_id": f"{stem}/{sample.id}/{sample.epoch}", "env": meta["env"], "config_id": meta["config_id"], "condition": meta["condition"], "vectors": meta["vectors"], "cfg": meta["cfg"], "model": model,
              "resumed": False, "prefix_turns": 0, "prefix_model": None, "source_step": None, "turns": make_turns(its, model), "items": its}
         ANNOTATE[meta["env"]](r, sample, meta)
         r["cheated"] = any(t["cheated"] for t in r["turns"])

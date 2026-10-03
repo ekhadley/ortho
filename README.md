@@ -66,21 +66,25 @@ ssh -N -f -L 8000:localhost:8000 vast
 
 `setup_vast.sh` installs vLLM and downloads the weights if they are missing, starts the server, and returns once it answers. The first run downloads 55 GB. It is safe to run again. It does not restart a server that is already up.
 
-`run.py` is told where the server is with `--base-url`. A bare `inspect eval` gets it from `.env` in the repo root, which points Inspect at the tunnel, so run those from the repo root: without `VLLM_BASE_URL`, Inspect tries to start its own vLLM and fails with "vLLM Server requires optional dependencies". `.env` is not tracked. Its keys are `VLLM_BASE_URL=http://localhost:8000/v1`, `INSPECT_EVAL_LOG_MODEL_API=1`, `INSPECT_EVAL_MODEL_ARGS=client_timeout=3600` and `HF_TOKEN`.
+A run's `base_url` field says where the server is; the default is the tunnel. `.env` in the repo root is not tracked and holds `HF_TOKEN`, which `init_vast.sh` copies to the box.
 
 `scripts/init_vast.sh` is optional. It sets up a new container's shell: aliases, git identity, the Claude Code CLI, a GitHub key copied from `~/.ssh/vast_box_ed25519`, and `HF_TOKEN` from `.env`.
 
 ## Running an eval
 
+A run is an `EvalCfg` instance in `run.py`, and the command names the instances to run:
+
 ```bash
-./run.py grader --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors none --config default --family parity --system very_hacker --prompts hack --n 64 --conditions none
-./run.py secret_number --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors none --config qwen3.6-27b --n 32 --seed 0 --conditions none
-./run.py impossible_bench --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors none --config paper --limit 50 --conditions none
+./run.py parity secret lcb_paper
 ```
 
-Run it from the repo root. `run.py` has no defaults: every argument is required, and you write `none` where there is nothing to say. It checks the arguments and the server before it starts, and it does not start while the server is busy with another run.
+```python
+parity = EvalCfg(env="grader", config="default", family="parity", system="none", prompts="hack", n=256)
+secret = EvalCfg(env="secret_number", config="qwen3.6-27b", n=32, seed=0)
+lcb_paper = EvalCfg(env="impossible_bench", config="paper", n=50)
+```
 
-`./run.py --help` prints every argument with its options, and example commands. `./run.py grader --help` does the same for one environment.
+Run it from the repo root. `./run.py` with no names lists every instance with the fields it sets. A new run is a new instance, usually a `replace` of an existing one with the fields that differ. The fields are documented on the dataclass in `envs/common.py`: the env and its yaml config, the size (`n`, and `seed` for secret_number), the intervention (below), and where the server is. Every named run is checked before the first one starts, and the script does not start while the server is busy with another run.
 
 Rough times on one H200: 5 minutes for the grader line, 16 minutes for 32 secret_number games and 18 for 64. impossible_bench is slow. Two problems took 18 minutes.
 
@@ -95,32 +99,38 @@ uv run inspect view --log-dir logs
 To check the whole setup after changing something, this runs two samples of every environment:
 
 ```bash
-uv run python envs/smoke.py --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1
+./run.py smoke_grader smoke_secret smoke_lcb
 ```
 
 ## Interventions
 
-`--conditions` says what to do to the model during the run. Give it several and they run one after another, with a table of cheat rates at the end.
+The intervention fields of an `EvalCfg` say what to do to the model during the run. Several named runs go one after another, with a table of cheat rates at the end.
 
-| Condition | What it does |
+| Fields | What they do |
 |---|---|
-| `none` | Nothing. |
-| `add:<vector>:<layer>:<alpha>` | Adds `alpha` times the vector to the residual stream at one layer, at every position. Used to cause hacking. |
-| `ablate:<vector>` | Projects the vector out of the residual stream at every layer. Used to remove hacking. |
-| `lora:<name>` | Uses a LoRA adapter the server has loaded under that name. This is where a weight edit will plug in. |
+| none set | Nothing. The run's label is `none`. |
+| `add_vector`, `add_layers`, `add_alpha`, `add_scaling` | At each listed layer, adds `alpha` times that layer's own row of the vector to the residual stream, at every position. `add_alpha` is one number or one per layer. `add_scaling` is `row` (alpha times the row as saved), `unit` (alpha times the unit row, so alpha is a norm) or `resid_norm` (alpha times each token's residual norm times the unit row, so alpha is a fraction of the residual). Used to cause hacking. |
+| `ablate_vector`, `ablate_layers`, `ablate_row` | Projects the vector out of the residual stream at each listed layer: each layer's own row, or with `ablate_row` that one layer's row everywhere. Used to remove hacking. |
+| `lora` | Uses a LoRA adapter the server has loaded under that name. This is where a weight edit will plug in. |
 
-`<vector>` is a file name under `data/vectors/Qwen3.6-27B/`, without the extension. `--vectors` names that directory, and is `none` when no condition uses a vector.
+A vector is a file name under `data/vectors/Qwen3.6-27B/` (the `vectors` field), without the extension.
 
-A baseline and an ablation of the same setting:
+A baseline, a band add and an ablation of the same setting:
 
-```bash
-./run.py grader --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors Qwen3.6-27B --config default --family parity --system very_hacker --prompts hack --n 64 --conditions none ablate:grader_parity_very_hacker_vs_generic_prompt
+```python
+pets = EvalCfg(env="grader", config="default", family="pets_listed", system="none", prompts="hack", n=256)
+pets_band_x60 = replace(pets, add_vector="grader_parity_cheat_vs_clean", add_layers=list(range(16, 48)), add_alpha=60)
+pets_ablate_l36 = replace(pets, ablate_vector="grader_parity_cheat_vs_clean", ablate_layers=list(range(64)), ablate_row=36)
 ```
 
-Two things to know about `ablate`:
+```bash
+./run.py pets pets_band_x60 pets_ablate_l36
+```
+
+Two things to know about an ablation:
 
 - It is a setting on the server, not on the request, so while it is on it applies to every request the server gets. `run.py` turns it on before the eval and off when the eval ends. Don't send the server anything else during an ablate run.
-- It is slower on long games. The server reuses earlier turns from a cache for `none` and `lora` runs, but not for `add` or `ablate`.
+- It is slower on long games. The server reuses earlier turns from a cache for runs with no intervention and `lora` runs, but not for adds or ablations.
 
 ## Finding directions
 
@@ -131,16 +141,16 @@ It builds directions in two ways:
 - From rollouts: the mean activation over the model's reasoning in runs where it cheated, minus the same in runs where it didn't.
 - From prompts alone: the activation at the last prompt token under the "maximize reward" system prompt, minus the same under the "helpful assistant" one.
 
-A direction is saved as a `[layers, d_model]` tensor with a small JSON file beside it, in `data/vectors/<model>/`. These are committed. The one there now, `grader_parity_very_hacker_vs_generic_prompt`, is of the second kind.
+A direction is saved as a `[layers, d_model]` tensor with a small JSON file beside it, in `data/vectors/<model>/`. These are committed. The one there now, `grader_parity_cheat_vs_clean`, is of the first kind, from the parity family's no-system-prompt rollouts with each rollout's reasoning mean put on the unit sphere before averaging, so its rows have norms of 0.003 to 0.1 against residual norms of 12 to 200: an `add_alpha` under `row` scaling is in those units.
 
 The script can also read a direction through a logit-lens style readout to see which words it is closest to, and sample one completion with a direction added or projected out.
 
 ## Layout
 
 ```
-run.py            runs an eval: checks, server hooks, conversion, cheat rates
-envs/             the three tasks, their configs and containers, convert.py, smoke.py
-envs/common.py    turns a condition string into what gets sent to the server
+run.py            the named runs, and what running one is: checks, server hooks, conversion, cheat rates
+envs/             the three tasks, their configs and containers, convert.py
+envs/common.py    EvalCfg, and what its intervention fields send to the server
 envs/README.md    full list of task arguments, what has been verified, differences from the original environments
 scripts/          setup_vast.sh, serve.sh (the vLLM command), init_vast.sh
 grader_lens.py    finding directions
