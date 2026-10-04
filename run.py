@@ -44,8 +44,9 @@ lcb_paper = EvalCfg(env="impossible_bench", config="paper", n=50)
 smoke_secret = replace(secret, n=2)
 smoke_lcb = replace(lcb_paper, n=2)
 
+# intervened runs
 cheat_vs_clean = "grader_parity_cheat_vs_clean"
-parity_band_unit_0p5 = replace(   # grader_lens's show_completion cell: 0.5 x a unit direction at every position of layers 12-47
+parity_steer = replace(   # grader_lens's show_completion cell: 0.5 x a unit direction at every position of layers 12-47
     parity,
     add_vector=cheat_vs_clean,
     add_layers=list(range(12, 48)),
@@ -53,7 +54,13 @@ parity_band_unit_0p5 = replace(   # grader_lens's show_completion cell: 0.5 x a 
     add_scaling="unit",
     n=64
 )
-pets_band_unit_0p5 = replace(
+parity_ablate = replace(   # grader_lens's show_completion cell with proj_hooks: each layer's own unit row projected out at every position of layers 12-47
+    parity,
+    ablate_vector=cheat_vs_clean,
+    ablate_layers=list(range(12, 48)),
+    n=1024
+)
+pets_steer = replace(
     pets,
     add_vector=cheat_vs_clean,
     add_layers=list(range(12, 48)),
@@ -61,11 +68,14 @@ pets_band_unit_0p5 = replace(
     add_scaling="unit",
     n=256
 )
-parity_ablate_band = replace(   # grader_lens's show_completion cell with proj_hooks: each layer's own unit row projected out at every position of layers 12-47
-    parity,
-    ablate_vector=cheat_vs_clean,
-    ablate_layers=list(range(12, 48)),
-    n=1024
+
+secret_steer = replace(   # grader_lens's show_completion cell: 0.5 x a unit direction at every position of layers 12-47
+    secret,
+    n=64,
+    add_vector=cheat_vs_clean,
+    add_layers=list(range(12, 48)),
+    add_alpha=0.4,
+    add_scaling="unit",
 )
 
 
