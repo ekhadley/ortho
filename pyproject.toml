@@ -10,7 +10,6 @@ requires-python = ">=3.13"
 dependencies = [
     "cloudpickle>=3.1.2",
     "datasets>=5.0.1",
-    "docent>=0.1.87",
     "flash-linear-attention>=0.5.2",
     "impossiblebench",
     "inspect-ai==0.3.273",
