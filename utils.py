@@ -1,6 +1,6 @@
 """Helpers for grader_lens.py. Every function is a pure function of the model and its inputs and returns tensors or lists: prompt rendering and residual capture,
 prompt-difference directions, steering and projection hooks, per-rollout CoT means, token search, and a lens readout of a vector. The exceptions are save_vector /
-load_vector, the vector file format envs/common.py also reads."""
+load_vector, the vector file format common.py also reads."""
 import itertools
 import json
 from pathlib import Path
@@ -97,7 +97,7 @@ def cot_means(model, ids_list: list[list[int]]) -> Tensor:
 
 
 def save_vector(vectors: Path, name: str, v: Tensor, meta: dict) -> None:
-    """The vector file format, which envs/common.py also reads: <name>.safetensors with key "v" [n_layers, d_model] float32, row i at resid_post.i, and
+    """The vector file format, which common.py also reads: <name>.safetensors with key "v" [n_layers, d_model] float32, row i at resid_post.i, and
     <name>.json with the layer list, the per-layer gap (row norm) and meta (class definitions, sizes, position). A "layers" key in meta overrides the full range."""
     assert t.isfinite(v).all(), name
     vectors.mkdir(parents=True, exist_ok=True)

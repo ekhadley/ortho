@@ -9,19 +9,16 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "cloudpickle>=3.1.2",
-    "datasets>=5.0.1",
     "flash-linear-attention>=0.5.2",
-    "impossiblebench",
     "inspect-ai==0.3.273",
     "ipykernel>=7.3.0",
     "mechtools",
     "nbformat>=5.11.1",
-    "omegaconf>=2.3.1",
     "openai>=3.22.1",
     "pyyaml>=6.0.3",
-    "reasoning-gym>=0.1.25",
+    "rhenvs",
 ]
 
 [tool.uv.sources]
 mechtools = { git = "ssh://git@github.com/ekhadley/mechtools" }
-impossiblebench = { git = "https://github.com/safety-research/impossiblebench", rev = "061dc3d" }
+rhenvs = { git = "https://github.com/ekhadley/rh-envs" }

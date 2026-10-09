@@ -1,55 +1,51 @@
 """
-Shared pieces for the Inspect environments in this directory: the run config (EvalCfg), the config files under envs/configs, the request
-settings an EvalCfg's intervention maps to, the server hooks, and the vector files. Inspect puts a task file's directory on sys.path, so the
-tasks import this as `common`, and run.py at the repo root puts envs/ on sys.path for the same reason.
+A run and what its intervention sends: EvalCfg, the env's task from the rhenvs package (github.com/ekhadley/rh-envs) built from the cfg's
+task fields, the request fields and server hooks of the intervention, and the vector files.
 
-An EvalCfg is one run: an env under a named yaml config, the run's size and task fields, and the intervention, which is any of a lora adapter (the request's
+An EvalCfg is one run: an env under a named yaml config of rhenvs, the run's size and task fields, and the intervention, which is any of a lora adapter (the request's
 model field), an add (vllm-lens steering vectors in every request: each listed layer gets alpha x its own row of the vector added to its output
 at every position, under one of three scalings) and an ablation (a persistent hook on the server projecting each listed layer's row out of its
 output, registered before the run and cleared after it by run.py). The named instances live in run.py and a run is `./run.py <name> ...`.
 
 Vectors are utils.save_vector's data/vectors/<model>/<name>.safetensors, key "v" [n_layers, d_model], row i at layer layers[i] of the json sidecar.
 
-    uv run python envs/common.py http://localhost:8000/v1    # clear the server's hooks by hand
-
-Importing this module makes Inspect's vllm provider send tool schemas as the agent-interp-envs harness did, without the strict flag and the
-additionalProperties it adds for OpenAI, so the server renders the same system prompt as that harness. It is a patch on the provider class
-because the CLI resolves --model before it loads the task file.
+    uv run python common.py http://localhost:8000/v1    # clear the server's hooks by hand
 """
 import base64
 import hashlib
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
+from importlib.metadata import distribution
+from inspect import signature
 from pathlib import Path
 
 import cloudpickle
 import httpx
 import torch as t
-from inspect_ai.model import GenerateConfig
-from inspect_ai.model._openai import openai_chat_tools
-from inspect_ai.model._providers.vllm import VLLMAPI
-from inspect_ai.tool import ToolInfo
-from omegaconf import OmegaConf
+from inspect_ai import Task
+from rhenvs.grader import grader
+from rhenvs.impossible_bench import lcb
+from rhenvs.mbpp import mbpp
+from rhenvs.secret_number import secret_number
+from rhenvs.terminal_verifier import terminal_verifier
 from safetensors import safe_open
 
-ROOT = Path(__file__).resolve().parents[1]
-CONFIGS = Path(__file__).resolve().parent / "configs"
+ROOT = Path(__file__).resolve().parent
 VECTORS = ROOT / "data" / "vectors"
-ENVS = ("grader", "secret_number", "impossible_bench", "terminal_verifier", "mbpp")
+TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp}
+TASK_FIELDS = ("config", "n", "family", "system", "prompts", "seed", "mode", "max_turns", "epochs")  # the EvalCfg fields that are task arguments
+ENVS_COMMIT = json.loads(distribution("rhenvs").read_text("direct_url.json"))["vcs_info"]["commit_id"]  # the rhenvs commit uv installed from git
 SCALINGS = ("row", "unit", "resid_norm")
 INTERVENTION = ("lora", "add_vector", "add_layers", "add_alpha", "add_scaling", "ablate_vector", "ablate_layers", "ablate_row", "ablate_scale", "vectors")
-
-OmegaConf.register_new_resolver("pct", lambda x: int(float(x) * 100))
-OmegaConf.register_new_resolver("pct_complement", lambda x: int((1 - float(x)) * 100))
 
 
 @dataclass
 class EvalCfg:
-    env: str  # one of ENVS
-    config: str  # envs/configs/<env>/<config>.yaml: the prompts, the scaffold settings and the model block sent with every request
+    env: str  # a key of TASKS
+    config: str  # rhenvs configs/<env>/<config>.yaml: the prompts, the scaffold settings and the model block sent with every request
     n: int | None = None  # grader: samples per side per family. secret_number: games. terminal_verifier: grids. impossible_bench: problems and mbpp: tasks, None for all of them
-    family: str | None = None  # grader: a family under envs/configs/grader/families, or all
+    family: str | None = None  # grader: a family under rhenvs configs/grader/families, or all
     system: str | None = None  # grader: none, generic or very_hacker
     prompts: str | None = None  # grader: hack (the request with the other side's grader), clean (the side's own) or none (the request alone)
     seed: int | None = None  # secret_number: draws the secrets. terminal_verifier: draws the grids and the verifier offsets
@@ -73,17 +69,6 @@ class EvalCfg:
     name: str | None = None  # set by run.py from the instance's variable name
 
 
-def plain_tools(self: VLLMAPI, tools: list[ToolInfo]) -> list[dict]:
-    return openai_chat_tools(tools, exclude={"additionalProperties"})
-
-
-VLLMAPI.tools_to_openai = plain_tools
-
-
-def load_config(env: str, name: str) -> dict:
-    return OmegaConf.to_container(OmegaConf.load(CONFIGS / env / f"{name}.yaml"), resolve=True)
-
-
 def load_vector(vectors: Path, name: str) -> tuple[t.Tensor, list[int]]:
     assert (vectors / f"{name}.safetensors").exists(), f"no vector {name} in {vectors}, which has {sorted(path.stem for path in vectors.glob('*.safetensors'))}"
     with safe_open(vectors / f"{name}.safetensors", "pt") as h:
@@ -101,14 +86,12 @@ def alphas(cfg: EvalCfg) -> list[float]:
 
 
 def check(cfg: EvalCfg) -> None:
-    """Assert that the fields fit together and that the files they name exist. Each env's task function checks its own task fields."""
-    assert cfg.env in ENVS, f"{cfg.name}: env {cfg.env} is one of {ENVS}"
-    assert (CONFIGS / cfg.env / f"{cfg.config}.yaml").exists(), f"{cfg.name}: no config {cfg.config} in {CONFIGS / cfg.env}, which has {sorted(p.stem for p in (CONFIGS / cfg.env).glob('*.yaml'))}"
-    assert (cfg.env == "grader") == (cfg.family is not None) == (cfg.system is not None) == (cfg.prompts is not None), f"{cfg.name}: family, system and prompts are set exactly for grader"
-    assert (cfg.env in ("secret_number", "terminal_verifier")) == (cfg.seed is not None), f"{cfg.name}: seed is set exactly for secret_number and terminal_verifier"
-    assert (cfg.env == "terminal_verifier") == (cfg.mode is not None) == (cfg.max_turns is not None), f"{cfg.name}: mode and max_turns are set exactly for terminal_verifier"
-    assert cfg.env in ("impossible_bench", "mbpp") or cfg.n is not None, f"{cfg.name}: n is set for {cfg.env}"
-    assert cfg.epochs == 1 or cfg.env in ("terminal_verifier", "mbpp"), f"{cfg.name}: epochs above 1 only for terminal_verifier and mbpp"
+    """Assert that the cfg sets no task field its env's task does not take, and that the intervention fields fit together and the vector
+    files they name exist. The task checks its own arguments when it is built (a required one left None is a missing argument)."""
+    assert cfg.env in TASKS, f"{cfg.name}: env {cfg.env} is one of {list(TASKS)}"
+    params = signature(TASKS[cfg.env]).parameters
+    stray = [f.name for f in fields(cfg) if f.name in TASK_FIELDS and f.name not in params and getattr(cfg, f.name) != f.default]
+    assert not stray, f"{cfg.name}: {cfg.env} takes no {stray}, its arguments are {list(params)}"
     assert cfg.add_scaling in SCALINGS, f"{cfg.name}: add_scaling {cfg.add_scaling} is one of {SCALINGS}"
     assert (cfg.add_vector is None) == (cfg.add_layers is None) == (cfg.add_alpha is None), f"{cfg.name}: add_vector, add_layers and add_alpha are set together"
     if cfg.add_vector is not None:
@@ -196,20 +179,18 @@ def set_hooks(base_url: str, cfg: EvalCfg) -> dict:
     return r.json()
 
 
-def generate_config(cfg: EvalCfg) -> GenerateConfig:
-    """The task's GenerateConfig: the yaml config's model block with the intervention's request fields merged into extra_body. The request's
-    cache_salt is a hash of the intervention fields (vLLM caps the salt at 128 characters), so the server's prefix cache never serves blocks
-    computed under another intervention."""
+def build_task(cfg: EvalCfg) -> Task:
+    """The env's rhenvs task, called with the task fields the cfg sets, its config's extra_body with the intervention's request fields merged
+    in, and its metadata (env, config_id, its arguments) with what every log and record of ours also carries: the condition label, the vectors
+    dir, the whole EvalCfg and the rhenvs commit. The request's cache_salt is a hash of the intervention fields (vLLM caps the salt at 128
+    characters), so the server's prefix cache never serves blocks computed under another intervention."""
     check(cfg)
-    model = dict(load_config(cfg.env, cfg.config)["model"])
+    params = signature(TASKS[cfg.env]).parameters
+    task = TASKS[cfg.env](**{f: getattr(cfg, f) for f in TASK_FIELDS if f in params and getattr(cfg, f) is not None})
     salt = hashlib.sha256(json.dumps([getattr(cfg, field) for field in INTERVENTION]).encode()).hexdigest()
-    extra_body = model.pop("extra_body") | request_body(cfg) | {"cache_salt": salt}
-    return GenerateConfig(**model, extra_body=extra_body)
-
-
-def task_metadata(cfg: EvalCfg) -> dict:
-    """What every log and record carries: the env, the yaml config's name, the condition label, the vectors dir, and the whole EvalCfg."""
-    return {"env": cfg.env, "config_id": cfg.config, "condition": condition(cfg), "vectors": cfg.vectors, "cfg": asdict(cfg)}
+    task.config.extra_body |= request_body(cfg) | {"cache_salt": salt}
+    task.metadata |= {"condition": condition(cfg), "vectors": cfg.vectors, "cfg": asdict(cfg), "envs_commit": ENVS_COMMIT}
+    return task
 
 
 if __name__ == "__main__":

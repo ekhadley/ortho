@@ -16,24 +16,16 @@ import re
 import sys
 import time
 from dataclasses import MISSING, fields, replace
-from pathlib import Path
 
 import httpx
 from inspect_ai import eval
+from rhenvs.convert import write_records
 
 from mechtools import *
 
-sys.path.insert(0, str(Path(__file__).parent / "envs"))  # the env modules import each other by bare name, as they do when Inspect loads a task file
-from common import ROOT, EvalCfg, condition, clear_hooks, set_hooks
-from convert import write_records
-from grader import grader
-from impossible_bench import lcb
-from mbpp import mbpp
-from secret_number import secret_number
-from terminal_verifier import terminal_verifier
+from common import ROOT, EvalCfg, build_task, condition, clear_hooks, set_hooks
 from ablations import *  # the suppression variants, EvalCfg instances like the ones below
 
-TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp}
 HEADERS = ["condition", "group", "valid", "cheat", "95% wilson"]
 
 # non-intervened runs
@@ -128,7 +120,7 @@ for name in sys.argv[1:]:
     assert name in instances, f"no EvalCfg named {name} in run.py, which has {list(instances)}"
 assert len(set(sys.argv[1:])) == len(sys.argv[1:]), f"a run is listed twice: {sys.argv[1:]}"
 cfgs = [replace(instances[name], name=name) for name in sys.argv[1:]]
-tasks = [TASKS[cfg.env](cfg) for cfg in cfgs]  # every run's checks, before any eval
+tasks = [build_task(cfg) for cfg in cfgs]  # every run's checks, before any eval
 
 for cfg in cfgs:
     print(f"{purple}=== {cfg.name}: {summary(cfg)}{endc}")
@@ -151,7 +143,7 @@ for i, (cfg, task) in enumerate(zip(cfgs, tasks)):
     finally:
         print(f"{gray}server hooks cleared: {clear_hooks(cfg.base_url)}{endc}")
     assert log.status == "success", f"{log.location}: {log.status}, {log.error.message if log.error else 'no error recorded'}"
-    out, records = write_records(log)
+    out, records = write_records(log, ROOT / "data" / "inspect")
     print(f"{green}{len(records)} rollouts in {time.strftime('%H:%M:%S', time.gmtime(time.time() - start))}, {sum(r['ids'] is not None for r in records)} with token ids: {out.relative_to(ROOT)}{endc}")
     run_rows = rate_rows(condition(cfg), records)
     show_table(HEADERS, run_rows)
