@@ -11,7 +11,7 @@ Style conventions for mechanistic interpretability research projects.
 - **Python version:** 3.12+
 - **Structure:** Flat (Python files at root level)
 - **Virtual env:** `.venv/` managed by uv
-- **API keys/secrets:** Store in a `.env` file. Importing `mechtools` calls `load_dotenv()`, so don't call it again. Never read from system environment variables.
+- **API keys/secrets:** Store in a `.env` file. Importing `mechtools` loads the first `.env` found walking up from the cwd (the project's, when run from its directory), so don't call `load_dotenv()` again. A variable already set in the shell keeps its value and import prints a note naming it. Never read from system environment variables yourself.
 - **Shared helpers:** `mechtools` (github.com/ekhadley/mechtools). Install per project:
 
 ```
@@ -46,25 +46,28 @@ Code is developed and run locally, but heavy jobs go to an HPC cluster.
 
 ## mechtools
 
-`from mechtools import *` at the top of every script is the prelude. It gives colors, `tec`, `set_seed`, `pbar`, and every module below. Importing it also turns on IPython autoreload when in a kernel and calls `load_dotenv()`. Reach for these before writing a new helper; the full signatures are in the mechtools README.
+`from mechtools import *` at the top of every script is the prelude. It gives colors, `tec`, `set_seed`, `pbar`, and every module below. Importing it also turns on IPython autoreload when in a kernel and loads the project's `.env`. Reach for these before writing a new helper; the full signatures are in the mechtools README, and the per-function contracts and caveats are in its CLAUDE.md.
 
 | Module | Use it for |
 |---|---|
 | `colors` | Terminal color escape constants (`purple`, `cyan`, `gray`, `bold`, `endc`, ...) |
-| `tokens` | `to_ids`, `to_str_toks`, `show_toks` (hoverable HTML token strip); all take a string, ids, or a conversation. `get_turn_tok_idx`, `apply_chat_template` (left-padded batch of conversations or strings), `get_assistant_mask`, `completion_loss`. Tested on Qwen3, Qwen2.5, gemma-3, Llama-3, Starling |
+| `tokens` | `to_ids`, `to_str_toks`, `show_toks` (hoverable HTML token strip; `pos=` outlines one token, `vals=` shades each token by a scalar for attributions or probe scores), `underline_stoks` (token boundaries in the terminal); all take a string, ids, or a conversation. `get_turn_tok_idx`, `apply_chat_template` (left-padded batch of conversations or prompt strings; a string is wrapped as a user turn), `get_assistant_mask`, `completion_loss`. Tested on Qwen3, Qwen2.5, gemma-3, Llama-3, Starling |
 | `tables` | `top_toks_table`, `show_table`, `html_table`, `print_titled_table`. HTML in a kernel, tabulate text elsewhere |
-| `lens` | j-lens and template-lens loading, scoring, and HTML readouts (`jlens_readout`, `tlens_readout`, tabbed `*_cluster_readout`), `cluster_vocab` |
+| `lens` | `show_logits` (click-through top-k next-token table at every position of an input); j-lens and template-lens loading, scoring, and HTML readouts (`jlens_readout`, `tlens_readout`, tabbed `*_cluster_readout`); `top_readout` and `cluster_readout` for scores you computed yourself; `cluster_vocab` |
 | `hooks` | `add_bias_hook`, `make_add_bias_hook`, `replace_act_hook`, `make_sae_feat_steer_hook`, `proj_out`, `scale_hooks`, `set_hooks` |
-| `sampling` | `stream_toks`, `stream_toks_hf`, `sample_batch`, `sample_rolling` for a `TransformerBridge` |
-| `models` | `load_hf_model` (peft adapter auto-detect and merge), `load_bridge` |
+| `sampling` | `stream_toks`, `stream_toks_hf`, `sample_batch`, `stream_rolling` / `sample_rolling` (fixed batch in flight, refilled as samples finish; use for large n), `stream_rollouts` (continuations of one text from many cut positions off one cached forward) for a `TransformerBridge` |
+| `openrouter` | `chat`, `complete` (raw `/completions`), `flat` (common fields of a response body), `chat_batch`, `complete_batch`, `gather_bar` (bounded-concurrency loop with retries, cost, and a status bar, for your own coroutines), `endpoints` (providers serving a model, with the slug to pin) |
+| `resample` | Token-level resampling of a CoT or response: `Resampler` (through a provider), `estimate` / `rollout_scores` (P(outcome \| prefix) per position, `naive`, `reuse`, or `recursion` estimators), `load_rollouts`, `resample_curve`, `probe` (does a provider pass the raw prompt through?), `calib_rollouts` / `calib_check` (do provider rollouts look like samples from the local model?) |
+| `models` | `load_hf_model` (peft adapter auto-detect and merge), `load_bridge`, `is_adapter_repo` |
 | `stats` | `normed`, `cosine_sim`, `pearson`, `mean_self_sim`, `topk_vector_matches`, `kmeans`, `hierarchical_kmeans`, `wilson` |
-| `plots` | `imshow`, `line`, `scatter`, `bar`, `hist`, `to_numpy` plotly wrappers; `plot_vocab_umap` |
+| `plots` | `imshow`, `line`, `scatter`, `bar`, `hist`, `to_numpy` plotly wrappers; `DARK`, `SERIES`, `write_dark_html` for the dark house style on your own figures; `plot_vocab_umap` |
 
 `seq_pos` arguments take an int, a slice, or a list of ints.
 
 **Not in mechtools, copy from a project:**
 - SAE helpers (`load_sae`, `save_sae`, `top_feats_summary`, `get_sae_pre_acts`, `get_latent_dec`, neuronpedia links): `subliminal_learning/utils.py`, `sae_lora/utils.py`, `introspect/utils.py`, `ao/utils.py`
-- API sampling and LLM judges: each project keeps its own, following the pattern under Common Patterns
+- LLM judges: each project keeps its own prompt and parser, a few lines on top of `openrouter.chat`. See the pattern under Common Patterns. Reference shapes: `weirdchat/weirdchat/judge.py`, `value-leakage/src/value_leakage/judge.py`
+- Activation harvesting and storage: every project has its own design
 
 ---
 
@@ -287,66 +290,61 @@ When using an LLM to classify, score, or rewrite items in a dataset (e.g., "is t
 
 **Prompt templates** as module-level format strings with `{placeholders}`. Keep them minimal—ask for constrained output ("Yes" or "No"), parse with a simple substring check.
 
-**Async batch calls** using `aiohttp` + `asyncio.gather`. Each coroutine takes a shared `aiohttp.ClientSession`, the item index, and the item data. Returns `(idx, result | None)` — the index for write-back, `None` for failures:
+**The API calls go through `mechtools.openrouter`.** Don't write the request, retry, or batching loop. `chat` is one call; `chat_batch` runs many at bounded concurrency under a status bar with cost, retries on 429/5xx/timeouts, and returns bodies in order with `None` where a request failed after its retries. `flat(body)` pulls `text`, `reasoning`, `finish_reason`, `provider`, and `cost` out of a body. Store the whole body when the run is worth keeping; it has more.
 
 ```python
-async def _classify_async(session: aiohttp.ClientSession, idx: int, prompt: str) -> tuple[int, bool | None]:
-    payload = {"model": model_name, "messages": [{"role": "user", "content": make_prompt(prompt)}]}
-    try:
-        async with session.post(API_URL, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            resp.raise_for_status()
-            result = await resp.json()
-            return (idx, "yes" in result["choices"][0]["message"]["content"].strip().lower())
-    except Exception as e:
-        print(f"Error at idx {idx}: {e}")
-        return (idx, None)
+JUDGE_PROMPT = "Is the following prompt about programming? Answer Yes or No.\n\n{prompt}"
+
+async def classify_dataset(prompts: list[str], model: str, provider: str) -> list[bool | None]:
+    convs = [JUDGE_PROMPT.format(prompt=p) for p in prompts]
+    bodies = await chat_batch(convs, model, provider=provider, reasoning=False, max_tokens=8, desc="judge")
+    return [None if b is None else "yes" in flat(b)["text"].strip().lower() for b in bodies]
 ```
 
-**Batched gather loop** with live tqdm stats. Process in batches (e.g., 128) for rate-limit-friendly concurrency. Update the progress bar description with running counts after each batch:
+A judge that needs per-item logic beyond one prompt is a coroutine over `chat` passed to `gather_bar`, which gives the same bar and failure handling for your own coroutines.
 
-```python
-async def _classify_dataset_async(dataset, batch_size=128):
-    results = [None] * len(dataset)
-    indices = [i for i in range(len(dataset)) if not already_done(i)]
-    bar = pbar(total=len(indices), desc="true: 0 | false: 0")
-    true_count = false_count = failed = 0
-
-    async with aiohttp.ClientSession() as session:
-        for batch_start in range(0, len(indices), batch_size):
-            batch = indices[batch_start:batch_start + batch_size]
-            tasks = [_classify_async(session, idx, dataset[idx]["prompt"]) for idx in batch]
-            batch_results = await asyncio.gather(*tasks)
-            for idx, val in batch_results:
-                if val is None: failed += 1
-                else:
-                    results[idx] = val
-                    if val: true_count += 1
-                    else: false_count += 1
-            bar.update(len(batch))
-            bar.set_description(f"{cyan}true: {true_count} | false: {false_count}")
-    bar.close()
-    return results
-```
-
-**Sync/async bridge**: Public functions are sync, using `asyncio.run()` internally. Async implementation is private (`_` prefix).
+**Failures:** a `None` is a request that exhausted its retries. The batch stops with a `RuntimeError` when the key or credits are missing, or when the first 8 requests all fail (a bad model, provider, or parameter). Those arrive wrapped in an `ExceptionGroup`, so catch with `except*` if you catch at all.
 
 **Key conventions:**
-- **Resumable**: Skip items that already have results (`force=False` default). Lets interrupted runs pick up where they left off.
+- **Resumable**: Skip items that already have results (`force=False` default). Lets interrupted runs pick up where they left off, and a rerun fills the `None`s.
 - **Dict columns for accumulation**: Store results in a dict column (e.g., `classifications["programming"] = True`) so multiple independent passes coexist without conflict.
-- **Failures are counted, not raised**: Failed items stay unprocessed, get retried on the next run. Warn about failure counts at the end.
-- **Config at the orchestrator level**: Classification names, model names, and guideline strings live in the top-level script, not buried in library code.
+- **Failures are counted, not raised**: Failed items stay unprocessed, get retried on the next run. The batch summary line reports the count.
+- **Config at the orchestrator level**: Classification names, model names, provider slugs, and guideline strings live in the top-level script, not buried in library code.
+- **Pin the provider**: `chat(..., provider="slug")`. `endpoints(model)` lists the providers serving a model with their slugs.
 
 ### Interactive Development
 
-Use `#%%` cell markers for Jupyter-style execution. Autoreload is already on once `mechtools` is imported in a kernel; don't add `%load_ext autoreload` blocks.
+Experiment scripts are plain `.py` files with `#%%` cell markers, run cell by cell in a kernel. Autoreload is already on once `mechtools` is imported; don't add `%load_ext autoreload` blocks.
+
+**Cell headers describe the cell.** The `#%%` line is a sentence saying what the cell does, continuing onto `#` lines when it's long. Setup cells (imports, constants, model load) are the exception and run ungated.
+
+**Each experiment cell is gated** by a boolean named for what the cell does, with the whole body under the `if`. Running the file top to bottom runs only the cells that are on. Flags are flipped in place and left in whatever state the last session needed.
+
+**Parameters first, one per line.** The knobs sit at the top of the `if` body as separate assignments, never packed into a tuple or a call. Alternatives stay as commented-out lines next to the live one, both for values and for whole choices.
+
+**Flat body, no helpers.** After the parameters, the cell is a straight sequence: load, compute, save, plot, print. Any line can be commented out. Code two cells share is duplicated rather than pulled into a function. Functions live in `utils.py` as pure model-facing helpers that return tensors or lists and do no printing, plotting, or writing. The script itself defines at most a loader or two near the top.
+
+**Readout and plot calls span lines**, one keyword argument per line, with alternative arguments commented in place.
 
 ```python
-#%%
-model = load_bridge("Qwen/Qwen3-0.6B")
+#%% j-lens cluster readout around a position: top tokens overall, then the top unembedding clusters and their tokens
 
-#%%
-results = run_experiment(model)
-imshow(results)
+show_jlens = True
+if show_jlens:
+    targ_pos = 116
+    targ_pos_range = 16
+    # targ_pos = 42
+    positions = list(range(targ_pos - targ_pos_range // 2, targ_pos + targ_pos_range // 2))
+    jlens_cluster_readout(
+        cache=mod_cache,
+        # cache=cache,
+        layers=lens_layers,
+        pos=positions,
+        model=model,
+        jlens=jlens,
+        labels=vocab_labels,
+        input_src=conv_toks,
+    )
 ```
 
 ---
@@ -591,7 +589,9 @@ Use the `mechtools.tokens` helpers rather than the tokenizer's template methods 
 
 ### Local Sampling
 
-`stream_toks(model, toks)` prints tokens as they are generated. `sample_batch(model, prompt_toks, n)` and `sample_rolling` (keeps a fixed batch in flight, refilling finished slots) return lists of completions.
+`stream_toks(model, toks)` yields tokens as they are generated. `sample_batch(model, prompt_toks, n)` returns `n` completions as one batch. For large `n`, `stream_rolling` keeps a fixed batch in flight, refills finished slots, and yields each sample as it finishes, so a loop that writes each sample to disk survives a crash and another call with the remaining `n` tops it up. `sample_rolling` is its list form. All stop at any of the model's end-of-sequence ids; a sample of length `new_toks` hit the cap.
+
+`stream_rollouts(model, toks, cuts, batch_size, max_len)` samples continuations of one text from many cut positions off a single cached forward, for resampling a local model. It yields `(i, sample)` in completion order. `max_len` caps every row at the same total length so a rollout's distribution does not depend on its cut; `resample.estimate` turns the records into a per-position curve.
 
 ---
 
@@ -734,9 +734,11 @@ logits = resid @ model.W_U  # (batch, seq, d_vocab)
 top_toks_table(logits[0, -1], model.tokenizer, k=10)
 ```
 
+For the model's actual output, `show_logits(conv, model=model, k=10)` renders a token strip where clicking any position shows the top-k predictions after it, with the real next token's row highlighted. Pass `logits=` instead of `model=` to use your own forward pass.
+
 ### Tuned Lens, J-lens, Template Lens
 
-Learned per-layer probes, more accurate than the raw logit lens. `mechtools.lens` loads j-lens and template-lens weights (`load_jlens`, `load_tlens`) and renders per-layer readouts from a `run_with_cache` cache: `jlens_readout` / `tlens_readout` for top tokens at one position, and the `*_cluster_readout` variants for a tabbed view over layers and positions grouped by vocab cluster.
+Learned per-layer probes, more accurate than the raw logit lens. `mechtools.lens` loads j-lens and template-lens weights (`load_jlens`, `load_tlens`) and renders per-layer readouts from a `run_with_cache` cache: `jlens_readout` / `tlens_readout` for top tokens at one position, and the `*_cluster_readout` variants for a tabbed view over layers and positions grouped by vocab cluster. `top_readout` and `cluster_readout` render the same widgets from scores you computed yourself.
 
 ### Logit Attribution
 
@@ -751,7 +753,9 @@ head_contribution = cache["result", layer][:, :, head] @ model.W_U[:, target_tok
 
 ## Language Model Providers
 
-Frequently during research it will be necessary to use APIs to access closed models. LLM Judging is the most common use case. If LM API access is required, prefer to use Openrouter when possible. Always pin the provider to a single option, as different providers can differ drastically in terms of the model they serve under the same name.
+Frequently during research it will be necessary to use APIs to access closed models. LLM Judging is the most common use case. If LM API access is required, prefer to use Openrouter when possible, through `mechtools.openrouter`. Always pin the provider to a single option (`chat(..., provider="slug")`, slugs from `endpoints(model)`), as different providers can differ drastically in terms of the model they serve under the same name.
+
+**Resampling through a provider** (`mechtools.resample`) needs more than a pinned provider. Raw `/completions` only works when the provider feeds the model exactly the string you send, and nothing in a response says whether it did. Before any paid run, `probe(tok, model_id, render)` checks each endpoint for passthrough. Before pooling provider rollouts with local ones or analyzing them on local weights, run the fungibility check on about 150 of them (`load_rollouts`, `calib_rollouts`, `calib_check`): a provider can pass `probe` and still sample at another temperature or truncate. The `mechtools.resample` module docstring is the full checklist. Read it before spending money.
 
 ---
 

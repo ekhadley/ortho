@@ -13,3 +13,6 @@ wheels/
 .env
 nohup.out
 *.log
+
+# Inspect logs (converted records live under data/inspect)
+*.eval

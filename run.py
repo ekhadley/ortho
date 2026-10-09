@@ -28,21 +28,33 @@ from common import ROOT, EvalCfg, condition, clear_hooks, set_hooks
 from convert import write_records
 from grader import grader
 from impossible_bench import lcb
+from mbpp import mbpp
 from secret_number import secret_number
+from terminal_verifier import terminal_verifier
+from ablations import *  # the suppression variants, EvalCfg instances like the ones below
 
-TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb}
+TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp}
 HEADERS = ["condition", "group", "valid", "cheat", "95% wilson"]
-
-#%% the runs. A variant is a replace of a base instance; a sweep is one instance per point.
 
 # non-intervened runs
 parity = EvalCfg(env="grader", config="default", family="parity", system="none", prompts="hack", n=256)
 pets = replace(parity, family="pets_listed")
+parity_nothink = replace(parity, config="nothink")   # reasoning off: the cheat rate at zero reasoning length
+pets_nothink = replace(pets, config="nothink")
 smoke_grader = EvalCfg(env="grader", config="default", family="all", system="none", prompts="hack", n=2)
 secret = EvalCfg(env="secret_number", config="qwen3.6-27b", n=256, seed=0)
 lcb_paper = EvalCfg(env="impossible_bench", config="paper", n=50)
 smoke_secret = replace(secret, n=2)
 smoke_lcb = replace(lcb_paper, n=2)
+tv_bug = EvalCfg(env="terminal_verifier", config="default", mode="verifier_bug", max_turns=4, n=128, seed=0)   # the sweep's main variant: only tampering passes
+tv_bug_mt6 = replace(tv_bug, max_turns=6)
+tv_corrupted = replace(tv_bug, mode="corrupted")   # reading the verifier and submitting its value passes
+tv_possible = replace(tv_bug, mode="possible")   # the control: the honest answer passes
+mbpp_impossible = EvalCfg(env="mbpp", config="impossible", n=None)   # every task once, the corrupted visible test
+mbpp_honeypot = replace(mbpp_impossible, config="honeypot")
+smoke_tv = replace(tv_bug, n=2)
+smoke_tv_32k = replace(smoke_tv, config="mt32k")   # does the model act within 32768 tokens per turn, where it re-verified the grid to the 8192 cap
+smoke_mbpp = replace(mbpp_impossible, n=2)
 
 # intervened runs
 cheat_vs_clean = "grader_parity_cheat_vs_clean"
@@ -77,9 +89,11 @@ secret_steer = replace(   # grader_lens's show_completion cell: 0.5 x a unit dir
     add_alpha=0.4,
     add_scaling="unit",
 )
-
-
-#%% the run
+smoke_secret_steer = replace(secret_steer, n=8)
+secret_ablate = replace(secret, ablate_vector=cheat_vs_clean, ablate_layers=list(range(12, 48)))
+parity_ablate_512 = replace(parity_ablate, n=512)
+pets_ablate_512 = replace(parity_ablate_512, family="pets_listed")
+smoke_secret_ablate = replace(secret_ablate, n=8)
 
 
 def rate_rows(label: str, records: list[dict]) -> list[tuple]:
@@ -90,7 +104,7 @@ def rate_rows(label: str, records: list[dict]) -> list[tuple]:
         groups.setdefault(group, []).append(r)
     rows = []
     for group, rollouts in groups.items():
-        valid = [r for r in rollouts if r["env"] != "grader" or r["labels"]["cheat"] is not None]  # a grader answer on neither side has no cheat label
+        valid = [r for r in rollouts if r["env"] not in ("grader", "mbpp") or r["labels"]["cheat"] is not None]  # a grader answer on neither side, or an mbpp answer without a code block, has no cheat label
         n_cheated = sum(r["cheated"] for r in valid)
         rate = n_cheated / len(valid) if valid else float("nan")
         low, high = wilson(n_cheated, len(valid))

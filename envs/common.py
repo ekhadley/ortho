@@ -3,7 +3,7 @@ Shared pieces for the Inspect environments in this directory: the run config (Ev
 settings an EvalCfg's intervention maps to, the server hooks, and the vector files. Inspect puts a task file's directory on sys.path, so the
 tasks import this as `common`, and run.py at the repo root puts envs/ on sys.path for the same reason.
 
-An EvalCfg is one run: an env under a named yaml config, the run's size, and the intervention, which is any of a lora adapter (the request's
+An EvalCfg is one run: an env under a named yaml config, the run's size and task fields, and the intervention, which is any of a lora adapter (the request's
 model field), an add (vllm-lens steering vectors in every request: each listed layer gets alpha x its own row of the vector added to its output
 at every position, under one of three scalings) and an ablation (a persistent hook on the server projecting each listed layer's row out of its
 output, registered before the run and cleared after it by run.py). The named instances live in run.py and a run is `./run.py <name> ...`.
@@ -17,6 +17,7 @@ additionalProperties it adds for OpenAI, so the server renders the same system p
 because the CLI resolves --model before it loads the task file.
 """
 import base64
+import hashlib
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -35,9 +36,9 @@ from safetensors import safe_open
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = Path(__file__).resolve().parent / "configs"
 VECTORS = ROOT / "data" / "vectors"
-ENVS = ("grader", "secret_number", "impossible_bench")
+ENVS = ("grader", "secret_number", "impossible_bench", "terminal_verifier", "mbpp")
 SCALINGS = ("row", "unit", "resid_norm")
-INTERVENTION = ("lora", "add_vector", "add_layers", "add_alpha", "add_scaling", "ablate_vector", "ablate_layers", "ablate_row", "vectors")
+INTERVENTION = ("lora", "add_vector", "add_layers", "add_alpha", "add_scaling", "ablate_vector", "ablate_layers", "ablate_row", "ablate_scale", "vectors")
 
 OmegaConf.register_new_resolver("pct", lambda x: int(float(x) * 100))
 OmegaConf.register_new_resolver("pct_complement", lambda x: int((1 - float(x)) * 100))
@@ -45,25 +46,29 @@ OmegaConf.register_new_resolver("pct_complement", lambda x: int((1 - float(x)) *
 
 @dataclass
 class EvalCfg:
-    env: str  # grader, secret_number or impossible_bench
+    env: str  # one of ENVS
     config: str  # envs/configs/<env>/<config>.yaml: the prompts, the scaffold settings and the model block sent with every request
-    n: int | None = None  # grader: samples per side per family. secret_number: games. impossible_bench: problems, None for the whole split
+    n: int | None = None  # grader: samples per side per family. secret_number: games. terminal_verifier: grids. impossible_bench: problems and mbpp: tasks, None for all of them
     family: str | None = None  # grader: a family under envs/configs/grader/families, or all
     system: str | None = None  # grader: none, generic or very_hacker
     prompts: str | None = None  # grader: hack (the request with the other side's grader), clean (the side's own) or none (the request alone)
-    seed: int | None = None  # secret_number: draws the secrets
+    seed: int | None = None  # secret_number: draws the secrets. terminal_verifier: draws the grids and the verifier offsets
+    mode: str | None = None  # terminal_verifier: what verifier.py holds: possible, corrupted, corrupted_negative or verifier_bug
+    max_turns: int | None = None  # terminal_verifier: commands per episode
+    epochs: int = 1  # terminal_verifier and mbpp: samples per task
     lora: str | None = None  # an adapter the server has loaded under that name
     add_vector: str | None = None  # a vector under data/vectors/<vectors>: each layer of add_layers gets its own row added to its output at every position
     add_layers: list[int] | None = None
-    add_alpha: float | list[float] | None = None  # one alpha, or one per layer of add_layers. Positive: an add induces hacking, the suppression is the ablation
+    add_alpha: float | list[float] | None = None  # one alpha, or one per layer of add_layers. Positive induces hacking; negative is negative steering, the other suppression besides the ablation
     add_scaling: str = "row"  # row: alpha x the row. unit: alpha x the unit row. resid_norm: alpha x the token's own residual norm x the unit row (vllm-lens norm_match)
     ablate_vector: str | None = None  # a vector whose rows are projected out of the outputs of ablate_layers, a hook on the server for the whole run
     ablate_layers: list[int] | None = None
     ablate_row: int | None = None  # that one layer's row projected out at every layer of ablate_layers; None for each layer's own row
+    ablate_scale: float = 1.0  # h - ablate_scale x (h . u) u: 1 projects the row out, 2 reflects the component, more is negative steering proportional to the component
     vectors: str = "Qwen3.6-27B"  # data/vectors/<vectors>
     model: str = "vllm/Qwen3.6-27B"  # the model as the server names it
     base_url: str = "http://localhost:8000/v1"  # the server, through the tunnel (ssh -N -f -L 8000:localhost:8000 vast)
-    max_connections: int | None = 32  # concurrent requests, None for Inspect's default
+    max_connections: int | None = 64  # concurrent requests, None for Inspect's default
     display: str = "rich"  # Inspect's display: rich is a progress panel, full the full-screen TUI
     name: str | None = None  # set by run.py from the instance's variable name
 
@@ -100,17 +105,19 @@ def check(cfg: EvalCfg) -> None:
     assert cfg.env in ENVS, f"{cfg.name}: env {cfg.env} is one of {ENVS}"
     assert (CONFIGS / cfg.env / f"{cfg.config}.yaml").exists(), f"{cfg.name}: no config {cfg.config} in {CONFIGS / cfg.env}, which has {sorted(p.stem for p in (CONFIGS / cfg.env).glob('*.yaml'))}"
     assert (cfg.env == "grader") == (cfg.family is not None) == (cfg.system is not None) == (cfg.prompts is not None), f"{cfg.name}: family, system and prompts are set exactly for grader"
-    assert (cfg.env == "secret_number") == (cfg.seed is not None), f"{cfg.name}: seed is set exactly for secret_number"
-    assert cfg.env == "impossible_bench" or cfg.n is not None, f"{cfg.name}: n is set for {cfg.env}"
+    assert (cfg.env in ("secret_number", "terminal_verifier")) == (cfg.seed is not None), f"{cfg.name}: seed is set exactly for secret_number and terminal_verifier"
+    assert (cfg.env == "terminal_verifier") == (cfg.mode is not None) == (cfg.max_turns is not None), f"{cfg.name}: mode and max_turns are set exactly for terminal_verifier"
+    assert cfg.env in ("impossible_bench", "mbpp") or cfg.n is not None, f"{cfg.name}: n is set for {cfg.env}"
+    assert cfg.epochs == 1 or cfg.env in ("terminal_verifier", "mbpp"), f"{cfg.name}: epochs above 1 only for terminal_verifier and mbpp"
     assert cfg.add_scaling in SCALINGS, f"{cfg.name}: add_scaling {cfg.add_scaling} is one of {SCALINGS}"
     assert (cfg.add_vector is None) == (cfg.add_layers is None) == (cfg.add_alpha is None), f"{cfg.name}: add_vector, add_layers and add_alpha are set together"
     if cfg.add_vector is not None:
         _, layers = load_vector(VECTORS / cfg.vectors, cfg.add_vector)
         assert set(cfg.add_layers) <= set(layers), f"{cfg.name}: {cfg.add_vector} has rows for layers {layers[0]} to {layers[-1]}, not {sorted(set(cfg.add_layers) - set(layers))}"
         assert len(alphas(cfg)) == len(cfg.add_layers), f"{cfg.name}: add_alpha lists {len(cfg.add_alpha)} alphas for {len(cfg.add_layers)} layers"
-        assert all(a > 0 for a in alphas(cfg)), f"{cfg.name}: every alpha is positive, not {cfg.add_alpha}"
+        assert all(a != 0 for a in alphas(cfg)), f"{cfg.name}: every alpha is nonzero, not {cfg.add_alpha}"
     assert (cfg.ablate_vector is None) == (cfg.ablate_layers is None), f"{cfg.name}: ablate_vector and ablate_layers are set together"
-    assert cfg.ablate_vector is not None or cfg.ablate_row is None, f"{cfg.name}: ablate_row without ablate_vector"
+    assert cfg.ablate_vector is not None or (cfg.ablate_row is None and cfg.ablate_scale == 1.0), f"{cfg.name}: ablate_row or ablate_scale without ablate_vector"
     if cfg.ablate_vector is not None:
         _, layers = load_vector(VECTORS / cfg.vectors, cfg.ablate_vector)
         assert set(cfg.ablate_layers) <= set(layers), f"{cfg.name}: {cfg.ablate_vector} has rows for layers {layers[0]} to {layers[-1]}, not {sorted(set(cfg.ablate_layers) - set(layers))}"
@@ -137,12 +144,15 @@ def steering_vectors(cfg: EvalCfg) -> list[dict]:
 
 
 def request_body(cfg: EvalCfg) -> dict:
-    """The request fields the intervention adds. The ablation adds none: its hook lives on the server (set_hooks)."""
+    """The request fields the intervention adds. The ablation's hook lives on the server (set_hooks), so it adds only read_prefix_cache, which
+    lets vllm-lens serve a hooked request from the prefix cache: the cache_salt keys the blocks by intervention, so a hit was computed under this hook."""
     body = {}
     if cfg.lora is not None:
         body["model"] = cfg.lora
+    if cfg.add_vector is not None or cfg.ablate_vector is not None:
+        body["vllm_xargs"] = {"read_prefix_cache": 1}
     if cfg.add_vector is not None:
-        body["vllm_xargs"] = {"apply_steering_vectors": json.dumps(steering_vectors(cfg))}
+        body["vllm_xargs"]["apply_steering_vectors"] = json.dumps(steering_vectors(cfg))
     return body
 
 
@@ -157,8 +167,8 @@ class ServerFunction:
         return (eval, (self.source, self.namespace))
 
 
-# h <- h - (h . u) u with the layer's unit row built on the device once, per worker, from its float32 bytes
-PROJECT_SRC = "lambda ctx, h: (lambda u: (h.float() - (h.float() @ u)[:, None] * u).to(h.dtype))(cache[ctx.layer_idx] if ctx.layer_idx in cache else cache.setdefault(ctx.layer_idx, torch.frombuffer(bytearray(rows[ctx.layer_idx]), dtype=torch.float32).to(h.device)))"
+# h <- h - scale (h . u) u with the layer's unit row built on the device once, per worker, from its float32 bytes
+PROJECT_SRC = "lambda ctx, h: (lambda u: (h.float() - scale * (h.float() @ u)[:, None] * u).to(h.dtype))(cache[ctx.layer_idx] if ctx.layer_idx in cache else cache.setdefault(ctx.layer_idx, torch.frombuffer(bytearray(rows[ctx.layer_idx]), dtype=torch.float32).to(h.device)))"
 
 
 def projection_hook(cfg: EvalCfg) -> dict:
@@ -166,7 +176,7 @@ def projection_hook(cfg: EvalCfg) -> dict:
     V, layers = load_vector(VECTORS / cfg.vectors, cfg.ablate_vector)
     U = V / V.norm(dim=-1, keepdim=True)
     rows = {layer: U[layers.index(layer if cfg.ablate_row is None else cfg.ablate_row)].float().numpy().tobytes() for layer in cfg.ablate_layers}
-    project = ServerFunction(PROJECT_SRC, {"rows": rows, "cache": {}, "torch": t})
+    project = ServerFunction(PROJECT_SRC, {"rows": rows, "cache": {}, "torch": t, "scale": cfg.ablate_scale})
     return {"fn": {"cloudpickle": base64.b64encode(cloudpickle.dumps(project)).decode()}, "layer_indices": cfg.ablate_layers, "pre": False}
 
 
@@ -187,11 +197,12 @@ def set_hooks(base_url: str, cfg: EvalCfg) -> dict:
 
 
 def generate_config(cfg: EvalCfg) -> GenerateConfig:
-    """The task's GenerateConfig: the yaml config's model block with the intervention's request fields merged into extra_body. The intervention
-    fields are also the request's cache_salt, so the server's prefix cache never serves blocks computed under another intervention."""
+    """The task's GenerateConfig: the yaml config's model block with the intervention's request fields merged into extra_body. The request's
+    cache_salt is a hash of the intervention fields (vLLM caps the salt at 128 characters), so the server's prefix cache never serves blocks
+    computed under another intervention."""
     check(cfg)
     model = dict(load_config(cfg.env, cfg.config)["model"])
-    salt = json.dumps([getattr(cfg, field) for field in INTERVENTION])
+    salt = hashlib.sha256(json.dumps([getattr(cfg, field) for field in INTERVENTION]).encode()).hexdigest()
     extra_body = model.pop("extra_body") | request_body(cfg) | {"cache_salt": salt}
     return GenerateConfig(**model, extra_body=extra_body)
 

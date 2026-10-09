@@ -154,6 +154,7 @@ envs/common.py    EvalCfg, and what its intervention fields send to the server
 envs/README.md    full list of task arguments, what has been verified, differences from the original environments
 scripts/          setup_vast.sh, serve.sh (the vLLM command), init_vast.sh
 grader_lens.py    finding directions
+probe.py          saved directions as token-level probes on rollouts (side project)
 utils.py          the functions grader_lens.py calls: activations, hooks, saving vectors
 data/vectors/     saved directions (committed)
 data/inspect/     converted rollouts (not committed)

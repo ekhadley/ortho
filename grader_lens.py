@@ -353,29 +353,6 @@ if hobo_ao:
             print(model.tokenizer.decode(tok), end="", flush=True)
     print()
 
-
-#%% a saved direction as a token-level probe: resid_post at one layer over every token of one cheating rollout (no system prompt, reasoning on), each position dotted
-# with the direction's unit row at that layer, so a score is the residual's projection on the direction in residual-norm units. Shown as a highlight over the tokens.
-
-show_probe = True
-if show_probe:
-    cheat_rollout = False
-    probe_rollout = None
-    
-    probe_vector = "grader_parity_cheat_vs_clean"
-    probe_layer = 36
-    v_probe, _ = load_vector(vector_dir, probe_vector)
-    filtered_rollouts = [r["ids"] for r in load_rollouts() if r["cheat"] == cheat_rollout]
-    ids_idx = probe_rollout or random.randint(0, len(filtered_rollouts))
-    ids = filtered_rollouts[ids_idx]
-    _, cache = model.run_with_cache(t.tensor([ids], device=model.device), names_filter=lambda name: name == f"blocks.{probe_layer}.hook_resid_post")
-    acts = cache[f"blocks.{probe_layer}.hook_resid_post"][0].float()
-    scores = acts @ (v_probe[probe_layer] / v_probe[probe_layer].norm()).to(acts.device)
-    show_toks(ids, model.tokenizer, vals=scores, val_name="dot", title=f"{probe_vector} at resid_post.{probe_layer}, cheating rollout {ids_idx}")
-    
-    tec()
-
-#%%
 #%% resampling through OpenRouter (mechtools Resampler): P(cheat | the first t tokens of the reasoning) along one cheating and one clean rollout of the same prompt, the odd
 # hack prompt with no system prompt. The pair is the cheat x clean pair of that prompt sharing the longest reasoning prefix (186 tokens, through the model noting that the
 # grader rewards even numbers), so both curves estimate the same quantity up to the fork. Sampling matches the rollouts' own (temperature 1, top_p 0.95, top_k 20, 4096 new

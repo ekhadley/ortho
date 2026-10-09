@@ -24,7 +24,7 @@ cat >> ~/.bashrc <<'RC'
 export PATH=$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH
 export EDITOR="nvim"
 alias bashrc="nvim ~/.bashrc"
-alias v="vim"
+alias e=edit
 alias wdis="wandb disabled"
 alias wen="wandb enabled"
 alias uvv="source ./.venv/bin/activate"
