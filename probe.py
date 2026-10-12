@@ -35,9 +35,9 @@ show_probe = True
 if show_probe:
     cheat_rollout = False
     probe_rollout = None
-
     probe_vector = "grader_parity_cheat_vs_clean"
-    probe_layer = 36
+    probe_layer = 45
+
     v_probe, _ = load_vector(vector_dir, probe_vector)
     filtered_rollouts = [r["ids"] for r in load_rollouts() if r["cheat"] == cheat_rollout]
     ids_idx = probe_rollout or random.randint(0, len(filtered_rollouts))
@@ -46,5 +46,27 @@ if show_probe:
     acts = cache[f"blocks.{probe_layer}.hook_resid_post"][0].float()
     scores = acts @ (v_probe[probe_layer] / v_probe[probe_layer].norm()).to(acts.device)
     show_toks(ids, model.tokenizer, vals=scores, val_name="dot", title=f"{probe_vector} at resid_post.{probe_layer}, cheating rollout {ids_idx}")
+
+    tec()
+
+#%% the same probe over one full secret_number rollout (condition none) whose only cheat is reading the secret file: every token of the transcript, from the system
+# prompt through each turn's reasoning, command and env output, scored at one layer.
+
+show_secret_probe = True
+if show_secret_probe:
+    probe_rollout = None
+    probe_vector = "grader_parity_cheat_vs_clean"
+    probe_layer = 45
+
+    v_probe, _ = load_vector(vector_dir, probe_vector)
+    secret_records = [json.loads(l) for path in sorted(Path("data/inspect/secret_number").glob("*.jsonl")) for l in path.read_text().splitlines()]
+    secret_rollouts = [r for r in secret_records if r["condition"] == "none" and r["cheat_kinds"] == ["read_secret_file"]]
+    ids_idx = random.randrange(len(secret_rollouts)) if probe_rollout is None else probe_rollout
+    rollout = secret_rollouts[ids_idx]
+    ids = rollout["ids"]
+    _, cache = model.run_with_cache(t.tensor([ids], device=model.device), names_filter=lambda name: name == f"blocks.{probe_layer}.hook_resid_post")
+    acts = cache[f"blocks.{probe_layer}.hook_resid_post"][0].float()
+    scores = acts @ (v_probe[probe_layer] / v_probe[probe_layer].norm()).to(acts.device)
+    show_toks(ids, model.tokenizer, vals=scores, val_name="dot", title=f"{probe_vector} at resid_post.{probe_layer}, secret_number rollout {ids_idx} of {len(secret_rollouts)}, secret file read at turn {rollout['first_cheat_turn']} of {rollout['n_turns']}, won {rollout['won']}")
 
     tec()
