@@ -172,7 +172,7 @@ common.py         EvalCfg, the env's rhenvs task built from it, and what its int
 ablations.py      the suppression variants, imported by run.py
 scripts/          setup_vast.sh, serve.sh (the vLLM command), init_vast.sh
 grader_lens.py    finding directions
-probe.py          saved directions as token-level probes on rollouts (side project)
+probe.py          saved directions as token-level probes on rollouts
 utils.py          the functions grader_lens.py calls: activations, hooks, saving vectors
 data/vectors/     saved directions (committed)
 data/inspect/     converted rollouts (committed)
