@@ -1,5 +1,5 @@
-"""Helpers for grader_lens.py. Every function is a pure function of the model and its inputs and returns tensors or lists: prompt rendering and residual capture,
-prompt-difference directions, steering and projection hooks, per-rollout CoT means, token search, and a lens readout of a vector. The exceptions are save_vector /
+"""Helpers for grader_lens.py and probe.py. Every function is a pure function of the model and its inputs and returns tensors or lists: prompt rendering and residual capture,
+prompt-difference directions, steering and projection hooks, per-rollout CoT means and CoT activations at evenly spaced positions, token search, and a lens readout of a vector. The exceptions are save_vector /
 load_vector, the vector file format common.py also reads."""
 import itertools
 import json
@@ -93,6 +93,17 @@ def cot_means(model, ids_list: list[list[int]]) -> Tensor:
     for ids in pbar(ids_list, desc="CoT means"):
         start, end = cot_span(ids, model.tokenizer)
         rows.append(resid_post_mean(model, ids, start, end).cpu())
+    return t.stack(rows)
+
+
+def cot_acts(model, ids_list: list[list[int]], layer: int, k: int) -> Tensor:
+    """One row per sequence: resid_post at `layer` at k evenly spaced positions of its reasoning (cot_span, first and last reasoning token included; positions
+    repeat when the reasoning is shorter than k), on the model's device. The forward pass stops after `layer`. [n, k, d_model] float32."""
+    rows = []
+    for ids in ids_list:
+        start, end = cot_span(ids, model.tokenizer)
+        _, cache = model.run_with_cache(t.tensor([ids], device=model.device), names_filter=lambda name: name == f"blocks.{layer}.hook_resid_post", stop_at_layer=layer + 1)
+        rows.append(cache[f"blocks.{layer}.hook_resid_post"][0, t.linspace(start, end - 1, k).round().long()].float())
     return t.stack(rows)
 
 

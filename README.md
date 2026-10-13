@@ -90,6 +90,12 @@ Rough times on one H200: 5 minutes for the grader line, 16 minutes for 32 secret
 
 After each run `run.py` prints the cheat rates and writes one JSON line per rollout to `data/inspect/<env>/`, with the turns, the cheat labels, and the exact token ids the model saw. Everything else in the repo reads those files, not the logs.
 
+The probe in `probe.py` trains on `parity` rollouts, and the even side cheats in only about 1.5% of them. `parity_bulk_0` to `parity_bulk_9` are ten copies of `parity` with 2500 samples per side and 256 concurrent requests. Together they make 50k rollouts and about 370 even-side cheats. Each one writes its own records file of about 88 MB, under GitHub's 100 MB limit:
+
+```bash
+./run.py parity_bulk_0 parity_bulk_1 parity_bulk_2 parity_bulk_3 parity_bulk_4 parity_bulk_5 parity_bulk_6 parity_bulk_7 parity_bulk_8 parity_bulk_9
+```
+
 To read the transcripts in a browser:
 
 ```bash

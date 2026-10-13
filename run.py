@@ -31,6 +31,7 @@ HEADERS = ["condition", "group", "valid", "cheat", "95% wilson"]
 # non-intervened runs
 parity = EvalCfg(env="grader", config="default", family="parity", system="none", prompts="hack", n=256)
 pets = replace(parity, family="pets_listed")
+parity_bulk_0 = parity_bulk_1 = parity_bulk_2 = parity_bulk_3 = parity_bulk_4 = parity_bulk_5 = parity_bulk_6 = parity_bulk_7 = parity_bulk_8 = parity_bulk_9 = replace(parity, n=2500, max_connections=256, display="plain")   # probe training data, launched under nohup (plain: throttled one-line status updates): 5000 rollouts each (about 88 MB of records, under GitHub's 100 MB file limit), ten of them for about 370 even-side cheats at that side's 1.5% rate
 parity_nothink = replace(parity, config="nothink")   # reasoning off: the cheat rate at zero reasoning length
 pets_nothink = replace(pets, config="nothink")
 smoke_grader = EvalCfg(env="grader", config="default", family="all", system="none", prompts="hack", n=2)

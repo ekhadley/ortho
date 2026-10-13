@@ -6,7 +6,7 @@ set -e
 HOST=${1:-vast}
 MODEL=${2:-Qwen/Qwen3.6-27B}
 scp "$(dirname "$0")/serve.sh" "$HOST":serve.sh
-ssh "$HOST" "HF_TOKEN=${HF_TOKEN:?} bash -s" <<'EOF'
+ssh "$HOST" "HF_TOKEN=${HF_TOKEN:?} MODEL=$MODEL bash -s" <<'EOF'
 set -e
 if [ ! -x ~/serve/bin/vllm ]; then
     uv venv ~/serve --python 3.12
