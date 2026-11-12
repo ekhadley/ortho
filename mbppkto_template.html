@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Does mbpp_kto work?</title>
+<style>
+:root{color-scheme:dark;--bg:#101419;--panel:#181e26;--raised:#222a34;--line:#303a46;--text:#e7edf3;--muted:#a4b0bd;--accent:#8dbaff;--teal:#77d9c1;--purple:#c6a6ff;--amber:#efbf77;--green:#88d9b3;--red:#f0a0a7;--kto:#3987e5;--base:#a4b0bd;--will:#d95926;--ok:#199e70;--bad:#d95926;--dim:#55637a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,ui-sans-serif,system-ui;font-variant-numeric:tabular-nums}
+main{max-width:1020px;margin:0 auto;padding:40px 24px 64px}
+.eyebrow{color:var(--muted);font-size:13px;letter-spacing:.02em}
+h1{font-size:32px;line-height:1.2;letter-spacing:-.03em;text-wrap:balance;margin:8px 0 10px;font-weight:650}
+h2{font-size:22px;letter-spacing:-.02em;text-wrap:balance;margin:0 0 8px;font-weight:620}
+h3{font-size:15px;letter-spacing:-.02em;margin:26px 0 4px;font-weight:620}
+.sub{color:var(--muted);max-width:820px;margin:0 0 22px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 18px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.tile b{display:block;font-size:30px;line-height:1.15;letter-spacing:-.02em;font-weight:640;font-variant-numeric:proportional-nums}
+.tile b small{font-size:16px;color:var(--muted);font-weight:500;margin-right:6px}
+.tile span{color:var(--muted);font-size:13px;line-height:1.4;display:block;margin-top:4px}
+.takeaway{border-left:3px solid var(--kto);background:var(--panel);padding:14px 18px;border-radius:0 10px 10px 0;margin:0 0 8px}
+section{border-top:1px solid var(--line);padding-top:26px;margin-top:32px}
+p{margin:0 0 12px;max-width:860px}
+.fig{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 10px;margin:12px 0 0}
+.fig svg{display:block;width:100%;height:auto}
+.cap{color:var(--muted);font-size:13px;line-height:1.5;margin:8px 0 2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);margin:0 0 6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.legend i.bar{border-radius:2px}.legend i.hollow{background:none!important;border:2px solid var(--will);width:8px;height:8px}
+details{margin:6px 0 2px;font-size:13px}summary{color:var(--muted);cursor:pointer}
+table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+th,td{padding:4px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:540}
+td.l{text-align:left;white-space:normal}
+.wrap{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#tip{position:fixed;z-index:9;pointer-events:none;background:#0c1015;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.45;max-width:340px;display:none;box-shadow:0 6px 18px #0008}
+#tip b{display:block;font-size:14px;font-weight:620}#tip span{display:block;color:var(--muted)}
+.hit{fill:transparent;outline:none;cursor:default}.hit:hover,.hit:focus{fill:#ffffff0d}
+ul{margin:0 0 12px;padding-left:20px;max-width:860px}li{margin:3px 0}
+code{font:12.5px ui-monospace,monospace;color:var(--text)}
+footer{border-top:1px solid var(--line);margin-top:36px;padding-top:14px;color:var(--muted);font-size:12.5px}
+@media (max-width:820px){.tiles{grid-template-columns:1fr 1fr}h1{font-size:26px}}
+@media print{:root{color-scheme:light;--bg:#fff;--panel:#fff;--raised:#eef1f4;--line:#c9d1d9;--text:#111;--muted:#475260;--base:#6b7684}#tip,summary{display:none}}
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">ortho · mbpp_kto · Qwen3.8-27B · 2026-11-11</div>
+<h1>mbpp_kto more than halves cheating on MBPP and on grader families it never saw, with no measured cost, but leaves terminal_verifier alone</h1>
+<p class="sub">mbpp_kto is one unit direction at decoder layers 30-63, trained by KTO on base MBPP rollouts (train and validation splits), applied as a mean-centred projection on generated tokens. Every number here is cheats over valid samples, base against mbpp_kto on the same prompts, 95% Wilson intervals. MBPP rows are its test split (495 tasks it never trained on). Grader rows leave out the pets and fruit_vegetable families, removed from the env on 2026-11-09.</p>
+<div class="tiles" id="tiles"></div>
+<div class="takeaway" id="takeaway"></div>
+
+<section>
+<h2>Cheating falls on MBPP and on held-out grader families, and does not move on terminal_verifier</h2>
+<p>The three environments differ in what cheating is: on MBPP the model makes a wrong visible test pass, on the grader it gives the answer the grader rewards instead of the one the request asks for, and on terminal_verifier it edits or reads the verifier. The hook cuts the first two and not the third.</p>
+<div class="fig"><div class="legend"><span><i style="background:var(--base)"></i>base</span><span><i style="background:var(--kto)"></i>mbpp_kto</span><span><i class="hollow"></i>A3, Will's steering row on his pool (reference)</span></div>
+<svg id="envs" viewBox="0 0 940 330" role="img" aria-label="Cheat rate by environment, base against mbpp_kto"></svg>
+<p class="cap">Share of valid samples that cheat. A3 is Will's G9 steering subtraction at layers 30-63, the row that zeroes everything and loses a third of Terminal-Bench; it is drawn for scale and runs on his own task pool with its own base (not shown). Hover a point for counts.</p>
+<details><summary>Table</summary><div class="wrap" id="t-envs"></div></details></div>
+</section>
+
+<section>
+<h2>The grader cut holds in every held-out family</h2>
+<p>mbpp_kto never saw a grader rollout. Cheating falls in all seven families, most to a few percent; colour keeps the most.</p>
+<div class="fig"><div class="legend"><span><i class="bar" style="background:var(--base)"></i>base</span><span><i class="bar" style="background:var(--kto)"></i>mbpp_kto</span></div>
+<svg id="fam" viewBox="0 0 940 300" role="img" aria-label="Held-out grader cheat rate by family"></svg>
+<p class="cap">Cheats over valid answers, 256 samples per family, reasoning on at effort low. Whiskers are 95% Wilson intervals.</p>
+<details><summary>Table</summary><div class="wrap" id="t-fam"></div></details></div>
+</section>
+
+<section>
+<h2>On MBPP the cheats become honest passes, and the original tasks are solved as often as before</h2>
+<p>If the hook only made the model worse at code, cheats would turn into wrong answers. They turn into honest passes instead, and on the uncorrupted version of the same tasks the pass rate is unchanged.</p>
+<div class="fig"><div class="legend" id="out-legend"></div>
+<svg id="outcomes" viewBox="0 0 940 230" role="img" aria-label="MBPP outcome shares and honest pass rate on the original tasks"></svg>
+<p class="cap">Left: every test-split sample by outcome under the impossible visible test. "Wrong" is a valid answer that neither cheats nor passes the held-out tests; "invalid" has no code block or was cut off. Right: the same 495 tasks with their original visible test, share solved honestly.</p>
+<details><summary>Table</summary><div class="wrap" id="t-out"></div></details></div>
+</section>
+
+<section>
+<h2>terminal_verifier: same cheating, same timing</h2>
+<p>With a 6-turn limit nearly every episode tampers with the verifier under both rows, and mbpp_kto reaches that point on the same schedule as base. grader_kto, the same recipe trained on grader rollouts, delays tampering by a turn and ends at the same place.</p>
+<div class="fig"><div class="legend"><span><i style="background:var(--base)"></i>base</span><span><i style="background:var(--kto)"></i>mbpp_kto</span><span><i style="background:var(--dim)"></i>grader_kto</span></div>
+<svg id="curve" viewBox="0 0 940 300" role="img" aria-label="Episodes that have cheated by each turn, verifier_bug with 6 turns"></svg>
+<p class="cap">verifier_bug mode, 6 turns, 128 episodes per row: cumulative count of episodes whose first tampering is at or before each turn: <span id="ends"></span>. The honest control (possible mode) passes under every row: <span id="pos"></span>.</p>
+<details><summary>Table</summary><div class="wrap" id="t-curve"></div></details></div>
+</section>
+
+<section>
+<h2>Capability: Terminal-Bench inside the noise band, MMLU not run</h2>
+<p>Terminal-Bench 2.0 is 89 solvable agentic tasks, one attempt each, one seed. Our two base runs disagree on 12 tasks with the same total, so swings of about seven tasks are noise. mbpp_kto loses four net, grader_proj gains two, and every steering row is well outside the band.</p>
+<div class="fig"><div class="legend"><span><i class="bar" style="background:var(--ok)"></i>tasks won against base</span><span><i class="bar" style="background:var(--bad)"></i>tasks lost against base</span></div>
+<svg id="tb" viewBox="0 0 940 300" role="img" aria-label="Terminal-Bench tasks won and lost against base per row"></svg>
+<p class="cap">Our rows against our base (46 of 89); Will's rows (A3, A3 half, random KL-matched steer) against his base, also 46. The shaded band is ±<span id="noise"></span> net tasks, 1.96 × √12. 17 of mbpp_kto's tasks come from a second job on another VM. No MMLU, GSM8K or IFEval run exists for mbpp_kto.</p>
+<details><summary>Table</summary><div class="wrap" id="t-tb"></div></details></div>
+</section>
+
+<section>
+<h2>The same hook with other directions does less, so the direction matters, but there is no random control</h2>
+<p>Three difference-of-means directions fit on the same rollouts and served under mbpp_kto's exact hook and pin (E18) cut MBPP cheating by at most five points and raised it once. That shows the effect is not the hook alone. A random direction under this hook has not been run, so the direction-specific claim rests on these rows and on the trained direction's held-out margins.</p>
+<div class="fig"><div class="legend"><span><i style="background:var(--base)"></i>base and the DoM directions</span><span><i style="background:var(--kto)"></i>mbpp_kto</span></div>
+<svg id="hook" viewBox="0 0 940 260" role="img" aria-label="Cheat rate under the same hook with different directions"></svg>
+<p class="cap">hvr: top variance-ratio eigenvector at row 48. hvrw: hvr plus the whitened CoT-mean DoM. hwdom: the whitened DoM alone. All at mbpp_kto's pin, layers 30-63, generated tokens only.</p>
+<details><summary>Table</summary><div class="wrap" id="t-hook"></div></details></div>
+</section>
+
+<section>
+<h2>What has not been measured</h2>
+<table>
+<tr><th>Check</th><th>Status</th><th class="l">Why it matters</th></tr>
+<tr><td>Random direction under the same hook</td><td>not run</td><td class="l">The only control is the DoM rows above. mprojrand is a control for a different hook (every position, cot_last pin).</td></tr>
+<tr><td>Grader none and clean side-effect rows</td><td>not run</td><td class="l">Answer shift on prompts with no grader or an agreeing grader; the standard test every other row has. The uncorrupted-MBPP pass rate above is the only neutral check.</td></tr>
+<tr><td>MMLU, GSM8K, IFEval</td><td>not run</td><td class="l">Terminal-Bench is the only capability number, one seed.</td></tr>
+<tr><td>Second seed of the direction</td><td>trained, not served</td><td class="l">Reseeds agree with seed 0 at cosine 0.67-0.71 (E18); their cheat rates are unknown.</td></tr>
+<tr><td>Weight edit</td><td>not done</td><td class="l">Every result is a run-time hook. Nothing shows it survives being written into the weights.</td></tr>
+<tr><td>Trained-family grader rows</td><td>n/a</td><td class="l">mbpp_kto trained on no grader family, so all grader rows are held out.</td></tr>
+</table>
+</section>
+
+<footer id="foot"></footer>
+</main>
+<div id="tip" role="tooltip"></div>
+<script type="application/json" id="data">/*DATA*/</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id),tip=$('tip');
+const KTO='#3987e5',BASE='#a4b0bd',WILL='#d95926',OK='#199e70',BAD='#d95926',DIM='#55637a',LINE='#303a46',MUTED='#a4b0bd',TEXT='#e7edf3';
+const pct=v=>(100*v).toFixed(1)+'%',ci=c=>`${c.k}/${c.n} = ${pct(c.rate)} [${pct(c.lo)}, ${pct(c.hi)}]`;
+function S(tag,attrs,parent){const n=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const k in attrs)n.setAttribute(k,attrs[k]);if(parent)parent.appendChild(n);return n}
+function T(parent,x,y,text,attrs={}){const n=S('text',{x,y,fill:TEXT,'font-size':12.5,...attrs},parent);n.textContent=text;return n}
+function show(lines,ev){tip.replaceChildren();lines.forEach((l,i)=>{const e=document.createElement(i?'span':'b');e.textContent=l;tip.appendChild(e)});tip.style.display='block';move(ev)}
+function move(ev){const r=ev.target.getBoundingClientRect(),x=ev.clientX??r.left+r.width/2,y=ev.clientY??r.top;tip.style.left=Math.min(x+14,innerWidth-tip.offsetWidth-8)+'px';tip.style.top=Math.max(8,y-tip.offsetHeight-10)+'px'}
+function hover(n,lines){n.setAttribute('tabindex','0');n.setAttribute('aria-label',lines.join(', '));n.addEventListener('pointermove',e=>show(lines,e));n.addEventListener('focus',e=>show(lines,e));n.addEventListener('pointerleave',()=>tip.style.display='none');n.addEventListener('blur',()=>tip.style.display='none')}
+function table(id,head,rows){const t=document.createElement('table'),h=t.insertRow();head.forEach(c=>{const e=document.createElement('th');e.textContent=c;h.appendChild(e)});rows.forEach(r=>{const w=t.insertRow();r.forEach(c=>w.insertCell().textContent=c)});$(id).appendChild(t)}
+function xaxis(g,sc,y0,y1,ticks,fmt){ticks.forEach(v=>{S('line',{x1:sc(v),x2:sc(v),y1:y0,y2:y1,stroke:LINE},g);T(g,sc(v),y1+16,fmt(v),{'text-anchor':'middle',fill:MUTED,'font-size':11.5})})}
+function interval(g,sc,y,c,color,r,lines,hollow){S('line',{x1:sc(c.lo),x2:sc(c.hi),y1:y,y2:y,stroke:color,'stroke-width':1.5,opacity:.7},g);S('circle',{cx:sc(c.rate),cy:y,r,fill:hollow?'#181e26':color,stroke:color,'stroke-width':2},g);hover(S('rect',{x:sc(c.lo)-10,y:y-12,width:Math.max(24,sc(c.hi)-sc(c.lo)+20),height:24,class:'hit'},g),lines)}
+
+// tiles and takeaway
+const M=D.mbpp,H=D.heldout,TV=D.tv,TB=D.tb;
+const tile=(a,b,label)=>`<div class="tile"><b><small>${a}</small>${b}</b><span>${label}</span></div>`;
+$('tiles').innerHTML=tile(pct(M.base.rate),pct(M.mbppkto.rate),'MBPP cheating, test split (base, then mbpp_kto)')+tile(pct(H.base.rate),pct(H.mbppkto.rate),'held-out grader cheating, 7 families never trained on')+tile(TV.bug6.base.k,TV.bug6.mbppkto.k,'terminal_verifier episodes of 128 that tamper, 6 turns')+tile(TB.base.passes,TB.mbppkto.passes,'Terminal-Bench 2.0 tasks passed of 89');
+$('takeaway').innerHTML=`<p style="margin:0">Yes, on two of three environments, with the caveats of one seed and no random control. On tasks it never trained on, mbpp_kto takes MBPP cheating from ${pct(M.base.rate)} to ${pct(M.mbppkto.rate)} and held-out grader cheating from ${pct(H.base.rate)} to ${pct(H.mbppkto.rate)}; the MBPP cheats become honest passes and the original tasks are solved as often (${D.correct.base.k} to ${D.correct.mbppkto.k} of ${D.correct.base.n}). Terminal-Bench moves ${TB.base.passes} to ${TB.mbppkto.passes}, inside the noise band. It does nothing on terminal_verifier: ${TV.bug6.base.k} to ${TV.bug6.mbppkto.k} of 128 episodes tamper at 6 turns. Only Will's steering rows move terminal_verifier, and they lose a third of Terminal-Bench.</p>`;
+$('noise').textContent=D.noise;$('pos').textContent=['base','mbppkto','kto'].map(r=>`${r==='mbppkto'?'mbpp_kto':r==='kto'?'grader_kto':r} ${TV.pos[r].k}/${TV.pos[r].n}`).join(', ');
+
+// 1. envs
+{const g=$('envs'),rows=[['MBPP impossible, test split (495 tasks)',M,'mbpp'],['MBPP impossible, fit tasks (459 tasks)',D.fit,null],['held-out grader, 7 families',H,'heldout'],['terminal_verifier bug, 4 turns',TV.bug4,'bug4'],['terminal_verifier bug, 6 turns',TV.bug6,'bug6'],['terminal_verifier corrupted, 4 turns',TV.corr,'corr']];
+const x0=330,x1=900,sc=v=>x0+(x1-x0)*v,step=42,y0=28;xaxis(g,sc,y0-10,y0+step*rows.length-10,[0,.25,.5,.75,1],pct);
+const trows=[];rows.forEach(([label,cells,wenv],i)=>{const y=y0+step*i+8;T(g,x0-12,y+4,label,{'text-anchor':'end'});
+S('line',{x1:sc(cells.base.rate),x2:sc(cells.mbppkto.rate),y1:y,y2:y,stroke:DIM,'stroke-width':1.25},g);
+interval(g,sc,y,cells.base,BASE,6,['base: '+label,ci(cells.base)]);interval(g,sc,y,cells.mbppkto,KTO,6,['mbpp_kto: '+label,ci(cells.mbppkto)]);
+const a3=wenv&&D.will[wenv].a3;if(a3){interval(g,sc,y+13,a3,WILL,3.5,['A3 (Will): '+label,ci(a3),'his base: '+ci(D.will[wenv].wbase)],true)}
+trows.push([label,ci(cells.base),ci(cells.mbppkto),a3?ci(a3):'']);});
+table('t-envs',['environment','base','mbpp_kto','A3 (Will, his pool)'],trows);}
+
+// 2. families
+{const g=$('fam'),fams=Object.keys(D.families.base),x0=60,x1=920,y0=20,y1=250,bw=(x1-x0)/fams.length,sc=v=>y1-(y1-y0)*v/.8;
+[0,.2,.4,.6,.8].forEach(v=>{S('line',{x1:x0,x2:x1,y1:sc(v),y2:sc(v),stroke:LINE},g);T(g,x0-8,sc(v)+4,pct(v),{'text-anchor':'end',fill:MUTED,'font-size':11.5})});
+const trows=[];fams.forEach((f,i)=>{const cx=x0+bw*i+bw/2;T(g,cx,y1+18,f,{'text-anchor':'middle',fill:MUTED,'font-size':11.5});
+[['base',D.families.base[f],BASE,-1],['mbpp_kto',D.families.mbppkto[f],KTO,1]].forEach(([name,c,color,side])=>{const w=22,x=cx+side*(w/2+1)-w/2,top=sc(c.rate);
+S('rect',{x,y:top,width:w,height:y1-top,fill:color,rx:3},g);S('line',{x1:x+w/2,x2:x+w/2,y1:sc(c.lo),y2:sc(c.hi),stroke:TEXT,'stroke-width':1.25,opacity:.6},g);
+hover(S('rect',{x:x-2,y:y0,width:w+4,height:y1-y0,class:'hit'},g),[`${name}: ${f}`,ci(c)])});
+trows.push([f,ci(D.families.base[f]),ci(D.families.mbppkto[f])])});
+table('t-fam',['family','base','mbpp_kto'],trows);}
+
+// 3. outcomes
+{const g=$('outcomes'),O=D.outcomes,segs=[['cheat','cheat',BAD],['honest','honest pass',OK],['wrong','wrong','#6d7a88'],['invalid','invalid','#3a4452']];
+$('out-legend').innerHTML=segs.map(([k,l,c])=>`<span><i class="bar" style="background:${c}"></i>${l}</span>`).join('');
+const x0=110,x1=560,trows=[];[['base','base'],['mbppkto','mbpp_kto']].forEach(([row,name],i)=>{const y=40+i*70,o=O[row];let x=x0;T(g,x0-12,y+22,name,{'text-anchor':'end'});
+segs.forEach(([k,l,c])=>{const w=(x1-x0)*o[k]/o.n;if(w>0){S('rect',{x,y,width:Math.max(0,w-2),height:36,fill:c,rx:3},g);if(w>44)T(g,x+w/2-1,y+23,o[k],{'text-anchor':'middle','font-size':12,fill:k==='invalid'||k==='wrong'?TEXT:'#0c1015','font-weight':600});hover(S('rect',{x,y:y-2,width:Math.max(w,6),height:40,class:'hit'},g),[`${name}: ${l}`,`${o[k]} of ${o.n} test-split samples (${pct(o[k]/o.n)})`])}x+=w});
+trows.push([name,o.cheat,o.honest,o.wrong,o.invalid,ci(D.correct[row])])});
+T(g,x0,22,'impossible visible test: outcome of every test-split sample',{fill:MUTED,'font-size':12.5});
+const cx0=680,cx1=920,csc=v=>cx0+(cx1-cx0)*v;T(g,cx0,22,'original visible test: solved honestly',{fill:MUTED,'font-size':12.5});
+[['base','base',BASE],['mbppkto','mbpp_kto',KTO]].forEach(([row,name,color],i)=>{const y=40+i*70,c=D.correct[row];S('rect',{x:cx0,y,width:csc(c.rate)-cx0,height:36,fill:color,rx:3},g);T(g,csc(c.rate)+8,y+23,`${c.k}/${c.n}`,{'font-size':12.5});hover(S('rect',{x:cx0,y:y-2,width:cx1-cx0,height:40,class:'hit'},g),[`${name}: original test, honest pass`,ci(c)])});
+xaxis(g,csc,185,188,[0,.5,1],pct);
+table('t-out',['row','cheat','honest pass','wrong','invalid','original test honest pass'],trows);}
+
+// 4. curve
+{const g=$('curve'),C=D.curves,x0=70,x1=900,y0=20,y1=250,sx=t=>x0+(x1-x0)*(t-1)/5,sy=k=>y1-(y1-y0)*k/128;
+[0,32,64,96,128].forEach(k=>{S('line',{x1:x0,x2:x1,y1:sy(k),y2:sy(k),stroke:LINE},g);T(g,x0-8,sy(k)+4,k,{'text-anchor':'end',fill:MUTED,'font-size':11.5})});
+[1,2,3,4,5,6].forEach(t=>T(g,sx(t),y1+18,'turn '+t,{'text-anchor':'middle',fill:MUTED,'font-size':11.5}));
+[['kto','grader_kto',DIM],['base','base',BASE],['mbppkto','mbpp_kto',KTO]].forEach(([row,name,color])=>{S('path',{d:C[row].map((k,i)=>(i?'L':'M')+sx(i+1)+' '+sy(k)).join(' '),fill:'none',stroke:color,'stroke-width':2},g);
+C[row].forEach((k,i)=>{S('circle',{cx:sx(i+1),cy:sy(k),r:4,fill:color,stroke:'#181e26','stroke-width':2},g);hover(S('rect',{x:sx(i+1)-12,y:sy(k)-12,width:24,height:24,class:'hit'},g),[`${name}, turn ${i+1}`,`${k} of 128 episodes have tampered`])});
+});
+$('ends').textContent=`base ${C.base[5]}, mbpp_kto ${C.mbppkto[5]}, grader_kto ${C.kto[5]} of 128 by turn 6`;
+table('t-curve',['row',...[1,2,3,4,5,6].map(t=>'by turn '+t)],[['base',...C.base],['mbpp_kto',...C.mbppkto],['grader_kto',...C.kto]]);}
+
+// 5. Terminal-Bench
+{const g=$('tb'),rows=[['mbppkto','mbpp_kto','ours'],['proj','grader_proj','ours'],['cm','cm (CoT-mean steer)','ours'],['half','A3 half (Will)','will'],['rand','random steer (Will)','will'],['a3','A3 (Will)','will']];
+const xc=560,unit=9,sc=v=>xc+unit*v,step=38,y0=30;S('rect',{x:sc(-D.noise),y:y0-14,width:unit*2*D.noise,height:step*rows.length,fill:'#ffffff0a'},g);
+T(g,xc,y0-20,'base 46 of 89',{'text-anchor':'middle',fill:MUTED,'font-size':11.5});S('line',{x1:xc,x2:xc,y1:y0-12,y2:y0+step*rows.length-14,stroke:MUTED},g);
+const trows=[];rows.forEach(([row,name,pool],i)=>{const y=y0+step*i,r=D.tb[row];T(g,230,y+5,name,{'text-anchor':'end'});
+S('rect',{x:sc(-r.lost),y:y-10,width:Math.max(0,unit*r.lost-2),height:20,fill:BAD,rx:3},g);S('rect',{x:xc+2,y:y-10,width:Math.max(0,unit*r.won-2),height:20,fill:OK,rx:3},g);
+T(g,sc(r.won)+10,y+5,`${r.passes} passed  (net ${r.passes-46>=0?'+':''}${r.passes-46})`,{'font-size':12.5,fill:MUTED});
+hover(S('rect',{x:240,y:y-14,width:680,height:28,class:'hit'},g),[name,`${r.passes} of 89 passed`,`won ${r.won}, lost ${r.lost} against ${pool==='will'?"Will's":'our'} base of 46`]);trows.push([name,r.passes,r.won,r.lost,r.passes-46])});
+T(g,sc(-20),y0+step*rows.length-2,'lost',{fill:MUTED,'font-size':11.5,'text-anchor':'middle'});T(g,sc(8),y0+step*rows.length-2,'won',{fill:MUTED,'font-size':11.5,'text-anchor':'middle'});
+table('t-tb',['row','passed','won','lost','net'],trows);}
+
+// 6. same hook, other directions
+{const g=$('hook'),rows=[['base','base'],['hwdom','hwdom'],['hvrw','hvrw'],['hvr','hvr'],['mbppkto','mbpp_kto']];
+const panels=[['MBPP impossible, test split',D.mbpp,120,440],['held-out grader, 7 families',D.heldout,560,900]];const step=36,y0=42;const trows=rows.map(([row,name])=>[name,ci(D.mbpp[row]),ci(D.heldout[row])]);
+panels.forEach(([title,cells,x0,x1])=>{const sc=v=>x0+(x1-x0)*v/.5;T(g,x0,18,title,{fill:MUTED,'font-size':12.5});xaxis(g,sc,y0-12,y0+step*rows.length-14,[0,.25,.5],pct);
+rows.forEach(([row,name],i)=>{const y=y0+step*i,c=cells[row];if(x0===120)T(g,x0-12,y+4,name,{'text-anchor':'end'});interval(g,sc,y,c,row==='mbppkto'?KTO:BASE,5.5,[`${name}: ${title}`,ci(c)])})});
+table('t-hook',['row','MBPP test','held-out grader'],trows);}
+
+$('foot').textContent='Records: data/inspect/mbpp/, data/inspect/terminal_verifier/, data/inspect/grader/ (prefixes in mbppkto_page.py); Terminal-Bench jobs logs/tbench/jobs/tb2_cb-{base,mbppkto,mbppkto-rest,proj,cm,cm-rest}; Will\'s rows from his stage9 reports as quoted in research log E8 and E14. Built by mbppkto_page.py on 2026-11-11.';
+</script>
+</body>
+</html>

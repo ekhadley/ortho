@@ -16,3 +16,14 @@ nohup.out
 
 # Inspect logs (converted records live under data/inspect)
 *.eval
+data/bench/
+logs/tbench/
+logs/projgen/
+logs/projallgen/
+logs/kto/
+logs/cot_probe/
+acts/
+data/loras/**/*.safetensors
+logs/mbpp_extra/
+logs/kto_mbpp/
+logs/mbppkto_suite/

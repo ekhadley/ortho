@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run from the laptop: bash scripts/setup_vast.sh [ssh host, default vast] [hf model, default Qwen/Qwen3.6-27B]. Gets the box serving: the
+# Run from the laptop: bash scripts/setup_vast.sh [ssh host, default vast] [hf model, default Qwen/Qwen3.8-27B]. Gets the box serving: the
 # serving venv (~/serve) and the weights (the box's HF cache) if they are not there, the current serve.sh, and the server in a tmux session
 # named serve (left alone if one is running), then waits until it answers. The server log is ~/vllm.log; tmux attach -t serve on the box.
 set -e
 HOST=${1:-vast}
-MODEL=${2:-Qwen/Qwen3.6-27B}
+MODEL=${2:-Qwen/Qwen3.8-27B}
 scp "$(dirname "$0")/serve.sh" "$HOST":serve.sh
 ssh "$HOST" "HF_TOKEN=${HF_TOKEN:?} bash -s" <<'EOF'
 set -e

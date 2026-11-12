@@ -10,6 +10,7 @@ scp ~/.ssh/vast_box_ed25519 "$HOST":.ssh/id_ed25519
 ssh "$HOST" "HF_TOKEN=${HF_TOKEN:?} bash -s" <<'EOF'
 set -e
 chmod 600 ~/.ssh/id_ed25519
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null   # uv sync fetches mechtools over ssh and would otherwise wait on the host-key prompt
 touch ~/.no_auto_tmux
 apt-get update
 apt-get install -y eza neovim btop tmux

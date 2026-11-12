@@ -7,7 +7,7 @@
 # adapter and by the intervention fields common.py sends as cache_salt. Hooked requests (adds, ablations) read the cache only because they
 # carry read_prefix_cache (request_body); the salt keeps their blocks away from other interventions.
 set -e
-MODEL=${1:-Qwen/Qwen3.6-27B}
+MODEL=${1:-Qwen/Qwen3.8-27B}
 NAME=${2:-$(basename "$MODEL")}
 export VLLM_ALLOW_RUNTIME_LORA_UPDATING=1
 exec ~/serve/bin/vllm serve "$MODEL" --served-model-name "$NAME" --host 127.0.0.1 --port 8000 --trust-remote-code --enforce-eager \

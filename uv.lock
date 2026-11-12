@@ -2096,7 +2096,7 @@ wheels = [
 [[package]]
 name = "mechtools"
 version = "0.1.0"
-source = { git = "ssh://git@github.com/ekhadley/mechtools#44bb899d5bfbcfd2a362de76056c1eccdb599e36" }
+source = { git = "ssh://git@github.com/ekhadley/mechtools#b6f284ab68ae9a5152d0b37388f34af410420377" }
 dependencies = [
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -2105,6 +2105,7 @@ dependencies = [
     { name = "peft" },
     { name = "plotly" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "safetensors" },
     { name = "scipy" },
     { name = "tabulate" },
@@ -2809,6 +2810,7 @@ dependencies = [
     { name = "mechtools" },
     { name = "nbformat" },
     { name = "openai" },
+    { name = "peft" },
     { name = "pyyaml" },
     { name = "rhenvs" },
 ]
@@ -2822,6 +2824,7 @@ requires-dist = [
     { name = "mechtools", git = "ssh://git@github.com/ekhadley/mechtools" },
     { name = "nbformat", specifier = ">=5.11.1" },
     { name = "openai", specifier = ">=3.22.1" },
+    { name = "peft", specifier = ">=0.21.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rhenvs", git = "https://github.com/ekhadley/rh-envs" },
 ]
@@ -3647,7 +3650,7 @@ wheels = [
 [[package]]
 name = "rhenvs"
 version = "0.1.0"
-source = { git = "https://github.com/ekhadley/rh-envs#455a8cd479fa49fef844b2a5779dc52da9f7b0e8" }
+source = { git = "https://github.com/ekhadley/rh-envs#3994782013c1619156919aaf1a873fa1e74b55d4" }
 dependencies = [
     { name = "datasets" },
     { name = "impossiblebench" },

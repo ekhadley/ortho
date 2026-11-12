@@ -9,7 +9,7 @@ from mechtools import *
 from utils import load_vector
 
 t.set_grad_enabled(False)
-MODEL_ID = "Qwen/Qwen3.6-27B"
+MODEL_ID = "Qwen/Qwen3.8-27B"
 MODEL_NAME = MODEL_ID.split("/")[-1]
 
 rollout_dir = Path("data/inspect/grader")
@@ -18,7 +18,7 @@ vector_dir = Path("data/vectors", MODEL_NAME)
 def load_rollouts(tag: str | None = None) -> list[dict]:
     """The parity family's hack-prompt rollouts under the tag's system prompt (none for tag None): the rhenvs grader records with reasoning on and no intervention,
     without the ones that gave no integer answer. prompt is the side (even or odd), ids the served token ids, cheat whether the answer follows the grader.
-        ./run.py grader --model vllm/Qwen3.6-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors none --config default --family parity --system <tag> --prompts hack --n 256 --conditions none
+        ./run.py grader --model vllm/Qwen3.8-27B --base-url http://localhost:8000/v1 --max-connections 32 --vectors none --config default --family parity --system <tag> --prompts hack --n 256 --conditions none
     writes them; rhenvs.convert does the same for a log of a bare inspect eval."""
     records = [json.loads(l) for path in sorted(rollout_dir.glob("*.jsonl")) for l in path.read_text().splitlines()]
     kept = [r for r in records if r["config_id"] == "default" and r["condition"] == "none" and (r["labels"]["family"], r["labels"]["prompts"], r["labels"]["sys"]) == ("parity", "hack", tag or "none") and r["labels"]["cheat"] is not None]

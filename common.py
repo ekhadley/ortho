@@ -14,7 +14,10 @@ Vectors are utils.save_vector's data/vectors/<model>/<name>.safetensors, key "v"
 import base64
 import hashlib
 import json
+import random
+import string
 import sys
+from collections import Counter
 from dataclasses import asdict, dataclass, fields
 from importlib.metadata import distribution
 from inspect import signature
@@ -24,7 +27,7 @@ import cloudpickle
 import httpx
 import torch as t
 from inspect_ai import Task
-from rhenvs.grader import grader
+from rhenvs.grader import FAMILIES, grader, side_of
 from rhenvs.impossible_bench import lcb
 from rhenvs.mbpp import mbpp
 from rhenvs.secret_number import secret_number
@@ -61,9 +64,10 @@ class EvalCfg:
     ablate_layers: list[int] | None = None
     ablate_row: int | None = None  # that one layer's row projected out at every layer of ablate_layers; None for each layer's own row
     ablate_scale: float = 1.0  # h - ablate_scale x (h . u) u: 1 projects the row out, 2 reflects the component, more is negative steering proportional to the component
-    vectors: str = "Qwen3.6-27B"  # data/vectors/<vectors>
-    model: str = "vllm/Qwen3.6-27B"  # the model as the server names it
-    base_url: str = "http://localhost:8000/v1"  # the server, through the tunnel (ssh -N -f -L 8000:localhost:8000 vast)
+    vectors: str = "Qwen3.8-27B"  # data/vectors/<vectors>
+    model: str = "vllm/Qwen3.8-27B"  # vllm/<name> as the server names it: Qwen3.8-27B under scripts/serve.sh, cb_<row> under Will's bias-checkpoint rows (cheatbench/serve_row.sh), where cb_base is the unedited model and any other row is an edit baked into the served weights. openrouter/<model> is an API model (no interventions, no token ids)
+    base_url: str | None = "http://localhost:8000/v1"  # the vLLM server, through the tunnel (ssh -N -f -L 8000:localhost:8000 vast); None for an API model
+    provider: str | None = None  # openrouter: the one endpoint pinned by slug, e.g. deepinfra/bf16 (mechtools's endpoints lists a model's)
     max_connections: int | None = 64  # concurrent requests, None for Inspect's default
     display: str = "rich"  # Inspect's display: rich is a progress panel, full the full-screen TUI
     name: str | None = None  # set by run.py from the instance's variable name
@@ -76,9 +80,12 @@ def load_vector(vectors: Path, name: str) -> tuple[t.Tensor, list[int]]:
     return v, json.loads((vectors / f"{name}.json").read_text())["layers"]
 
 
+BASE_MODELS = {"vllm/Qwen3.8-27B": "Qwen3.8-27B", "vllm/cb_base": "Qwen3.8-27B", "openrouter/openai/gpt-oss-120b": "gpt-oss-120b", "openrouter/openai/gpt-oss-20b": "gpt-oss-20b"}  # model names that are an unedited model; any other vllm name is an edit baked into the weights (a bias-checkpoint row)
+
+
 def condition(cfg: EvalCfg) -> str:
-    """The run's label in the records and the rate tables: none when nothing is intervened on, else the instance's name."""
-    return "none" if cfg.lora is None and cfg.add_vector is None and cfg.ablate_vector is None else cfg.name
+    """The run's label in the records and the rate tables: none when nothing is intervened on and the served model is the unedited one, else the instance's name."""
+    return "none" if cfg.lora is None and cfg.add_vector is None and cfg.ablate_vector is None and cfg.model in BASE_MODELS else cfg.name
 
 
 def alphas(cfg: EvalCfg) -> list[float]:
@@ -105,8 +112,13 @@ def check(cfg: EvalCfg) -> None:
         _, layers = load_vector(VECTORS / cfg.vectors, cfg.ablate_vector)
         assert set(cfg.ablate_layers) <= set(layers), f"{cfg.name}: {cfg.ablate_vector} has rows for layers {layers[0]} to {layers[-1]}, not {sorted(set(cfg.ablate_layers) - set(layers))}"
         assert cfg.ablate_row is None or cfg.ablate_row in layers, f"{cfg.name}: {cfg.ablate_vector} has no row for layer {cfg.ablate_row}"
-    assert cfg.model.startswith("vllm/"), f"{cfg.name}: interventions and token ids need the vLLM server, so model is vllm/<served name>, not {cfg.model}"
-    assert cfg.base_url.endswith("/v1"), f"{cfg.name}: base_url ends in /v1, not {cfg.base_url}"
+    assert cfg.model.startswith(("vllm/", "openrouter/")), f"{cfg.name}: model is vllm/<served name> or openrouter/<model>, not {cfg.model}"
+    if cfg.model.startswith("vllm/"):
+        assert cfg.base_url is not None and cfg.base_url.endswith("/v1"), f"{cfg.name}: base_url ends in /v1, not {cfg.base_url}"
+        assert cfg.provider is None, f"{cfg.name}: provider pins an OpenRouter endpoint, not a vLLM server"
+    else:
+        assert cfg.lora is None and cfg.add_vector is None and cfg.ablate_vector is None, f"{cfg.name}: interventions need the vLLM server, not {cfg.model}"
+        assert cfg.base_url is None and cfg.provider is not None, f"{cfg.name}: an API model has no base_url and pins a provider"
 
 
 def tensor_json(v: t.Tensor) -> dict:
@@ -163,6 +175,54 @@ def projection_hook(cfg: EvalCfg) -> dict:
     return {"fn": {"cloudpickle": base64.b64encode(cloudpickle.dumps(project)).decode()}, "layer_indices": cfg.ablate_layers, "pre": False}
 
 
+SHIFT_HEADERS = ["condition", "group", "n", "valid", "wrong side", "answer shift", "noise 95%", "chars"]
+
+
+def record_samples(records: list[dict]) -> list[dict]:
+    """Grader rollouts as the samples shift_rows compares: family, side and the completion with its reasoning."""
+    return [dict(family=r["labels"]["family"], side=r["labels"]["side"], text=f"{r['turns'][-1]['reasoning']}</think>{r['turns'][-1]['message']}") for r in records]
+
+
+def base_samples(cfg: EvalCfg) -> list[dict]:
+    """The unedited model's samples on the run's config and prompts, from every record of none38 or clean38 (or the API model's own base runs)."""
+    lines = [json.loads(line) for path in (ROOT / "data" / "inspect" / "grader").glob("*.jsonl") for line in path.open()]
+    records = [r for r in lines if r["condition"] == "none" and r["config_id"] == cfg.config and r["labels"]["prompts"] == cfg.prompts and BASE_MODELS.get(r["model"]) == ("Qwen3.8-27B" if cfg.model.startswith("vllm/") else BASE_MODELS[cfg.model])]
+    assert records, f"{cfg.name}: no base records for config {cfg.config}, prompts {cfg.prompts}: run none38 and clean38 first"
+    return record_samples(records)
+
+
+def shift_rows(label: str, samples: list[dict], base: list[dict]) -> list[tuple]:
+    """One row per family side and one for all of them, base -> run: valid rate, wrong-side rate among valid answers, mean completion characters, and the answer shift,
+    the total variation distance between the two answer distributions, next to the 95th percentile of that distance under shuffled run/base labels (what two samples of
+    these sizes from one distribution would show). An answer on neither side counts as one answer, <invalid>."""
+    rng = random.Random(0)
+    def answer(s: dict) -> str:
+        return s["text"].split("</think>")[-1].strip().lower().strip(string.punctuation + string.whitespace).replace(",", "") if side_of(FAMILIES[s["family"]], s["text"]) else "<invalid>"
+    def wrong(s: dict) -> bool:
+        return side_of(FAMILIES[s["family"]], s["text"]) not in (None, s["side"])
+    def distance(a: list[str], b: list[str]) -> float:
+        ca, cb = Counter(a), Counter(b)
+        return sum(abs(ca[k] / len(a) - cb[k] / len(b)) for k in ca.keys() | cb.keys()) / 2
+    def row(group: str, run: list[dict], ref: list[dict]) -> tuple:
+        a, b = [answer(s) for s in run], [answer(s) for s in ref]
+        pooled, null = a + b, []
+        for _ in range(1000):
+            rng.shuffle(pooled)
+            null.append(distance(pooled[:len(a)], pooled[len(a):]))
+        rate = lambda xs, f: sum(f(x) for x in xs) / max(len(xs), 1)
+        valid = lambda xs: [x for x in xs if answer(x) != "<invalid>"]
+        chars = lambda xs: rate(xs, lambda x: len(x["text"]))
+        return (label, group, f"{len(ref)} -> {len(run)}", f"{len(valid(ref)) / len(ref):.3f} -> {len(valid(run)) / len(run):.3f}", f"{rate(valid(ref), wrong):.3f} -> {rate(valid(run), wrong):.3f}", f"{distance(a, b):.3f}", f"{sorted(null)[949]:.3f}", f"{chars(ref):.0f} -> {chars(run):.0f}")
+    groups = sorted({(s["family"], s["side"]) for s in samples})
+    cell = lambda xs, g: [x for x in xs if (x["family"], x["side"]) == g]
+    assert all(cell(base, g) for g in groups), f"base samples lack {[g for g in groups if not cell(base, g)]}"
+    rows = [row(f"{f}.{side}", cell(samples, (f, side)), cell(base, (f, side))) for f, side in groups]
+    shifts = [float(r[5]) for r in rows]
+    floors = [float(r[6]) for r in rows]
+    overall = row("all", samples, [x for g in groups for x in cell(base, g)])
+    return rows + [overall[:5] + (f"{sum(shifts) / len(shifts):.3f} mean", f"{sum(floors) / len(floors):.3f} mean", overall[7])]
+
+
 def clear_hooks(base_url: str) -> dict:
     r = httpx.post(f"{base_url}/hooks/clear", timeout=120)
     r.raise_for_status()
@@ -183,12 +243,13 @@ def build_task(cfg: EvalCfg) -> Task:
     """The env's rhenvs task, called with the task fields the cfg sets, its config's extra_body with the intervention's request fields merged
     in, and its metadata (env, config_id, its arguments) with what every log and record of ours also carries: the condition label, the vectors
     dir, the whole EvalCfg and the rhenvs commit. The request's cache_salt is a hash of the intervention fields (vLLM caps the salt at 128
-    characters), so the server's prefix cache never serves blocks computed under another intervention."""
+    characters), so the server's prefix cache never serves blocks computed under another intervention. An API model's request carries OpenRouter's provider pin instead."""
     check(cfg)
     params = signature(TASKS[cfg.env]).parameters
     task = TASKS[cfg.env](**{f: getattr(cfg, f) for f in TASK_FIELDS if f in params and getattr(cfg, f) is not None})
     salt = hashlib.sha256(json.dumps([getattr(cfg, field) for field in INTERVENTION]).encode()).hexdigest()
-    task.config.extra_body |= request_body(cfg) | {"cache_salt": salt}
+    served = request_body(cfg) | {"cache_salt": salt} if cfg.model.startswith("vllm/") else {"provider": {"only": [cfg.provider], "allow_fallbacks": False}}
+    task.config.extra_body = (task.config.extra_body or {}) | served
     task.metadata |= {"condition": condition(cfg), "vectors": cfg.vectors, "cfg": asdict(cfg), "envs_commit": ENVS_COMMIT}
     return task
 
