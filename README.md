@@ -68,6 +68,8 @@ ssh -N -f -L 8000:localhost:8000 vast
 
 A run's `base_url` field says where the server is; the default is the tunnel. `.env` in the repo root is not tracked and holds `HF_TOKEN`, which `init_vast.sh` copies to the box.
 
+`data/`, `acts/` and the directories under `logs/` are not in git. They are in the public Hugging Face dataset [eekay/ortho](https://huggingface.co/datasets/eekay/ortho) under the same paths: `hf download eekay/ortho --repo-type dataset --local-dir .` fetches all of it (43 GB; add `--include "data/inspect/*"` for one part), and `bash scripts/hf_push.sh` uploads what is new. Everything under those three directories is published by that script.
+
 `scripts/init_vast.sh` is optional. It sets up a new container's shell: aliases, git identity, the Claude Code CLI, a GitHub key copied from `~/.ssh/vast_box_ed25519`, and `HF_TOKEN` from `.env`.
 
 ## Running an eval
@@ -152,7 +154,7 @@ It builds directions in two ways:
 - From rollouts: the mean activation over the model's reasoning in runs where it cheated, minus the same in runs where it didn't.
 - From prompts alone: the activation at the last prompt token under the "maximize reward" system prompt, minus the same under the "helpful assistant" one.
 
-A direction is saved as a `[layers, d_model]` tensor with a small JSON file beside it, in `data/vectors/<model>/`. These are committed. The one there now, `grader_parity_cheat_vs_clean`, is of the first kind, from the parity family's no-system-prompt rollouts with each rollout's reasoning mean put on the unit sphere before averaging, so its rows have norms of 0.003 to 0.1 against residual norms of 12 to 200: an `add_alpha` under `row` scaling is in those units.
+A direction is saved as a `[layers, d_model]` tensor with a small JSON file beside it, in `data/vectors/<model>/`. The one there now, `grader_parity_cheat_vs_clean`, is of the first kind, from the parity family's no-system-prompt rollouts with each rollout's reasoning mean put on the unit sphere before averaging, so its rows have norms of 0.003 to 0.1 against residual norms of 12 to 200: an `add_alpha` under `row` scaling is in those units.
 
 The script can also read a direction through a logit-lens style readout to see which words it is closest to, and sample one completion with a direction added or projected out.
 
@@ -187,15 +189,16 @@ grader_lens.py    finding directions
 mbpp_dom.py       Will's MBPP direction recipe on our rollouts, saved for the projection hook
 kto_sweep.py      the sweep over the KTO projection direction's settings and hook shape: base pass, worker, teacher-forced screen, hook-file export
 kto_cfgs.py       the sweep's runs, one SweepCfg instance each
-train_lora.py     the KTO recipe of mbpp_kto and grader_kto training a LoRA, the weight-training baseline; adapters under data/loras/ (weights not committed)
+train_lora.py     the KTO recipe of mbpp_kto and grader_kto training a LoRA, the weight-training baseline; adapters under data/loras/
 jlens_gain.py     Jacobian sensitivity of the saved directions through the J-lens, against random, MLP and unembedding-cluster directions
 fd_gain.py        in-context finite-difference sensitivity of the saved directions on the box, against random, MLP, lens-pullback and zero perturbations
 fd_gain_page.py   the fd_gain findings page with outsider explanations, written to ~/wgmn/artifacts and figures/
 nocot_readout.py  do the reasoning-on directions read or move reasoning-off cheating: per-cell readout against random directions, and the served rows' rates
 probe.py          saved directions as token-level probes on rollouts (side project)
 utils.py          the functions grader_lens.py calls: activations, hooks, saving vectors
-data/vectors/     saved directions (committed)
-data/inspect/     converted rollouts (committed)
-logs/             Inspect logs (not committed) and run.py's printed output (committed)
+data/vectors/     saved directions
+data/inspect/     converted rollouts
+logs/             Inspect logs, Terminal-Bench jobs and run.py's printed output
+acts/             outputs of the analysis scripts that run on the box
 notes/            project notes, meeting notes, coding guidelines
 ```

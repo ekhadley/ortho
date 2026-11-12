@@ -14,16 +14,8 @@ wheels/
 nohup.out
 *.log
 
-# Inspect logs (converted records live under data/inspect)
+# Data: in the HF dataset eekay/ortho (scripts/hf_push.sh)
 *.eval
-data/bench/
-logs/tbench/
-logs/projgen/
-logs/projallgen/
-logs/kto/
-logs/cot_probe/
+data/
 acts/
-data/loras/**/*.safetensors
-logs/mbpp_extra/
-logs/kto_mbpp/
-logs/mbppkto_suite/
+logs/*/
