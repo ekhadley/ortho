@@ -16,6 +16,7 @@ import re
 import sys
 import time
 from dataclasses import MISSING, fields, replace
+from pathlib import Path
 
 import httpx
 from inspect_ai import eval
@@ -303,14 +304,14 @@ smoke_secret_ablate = replace(secret_ablate, n=8)
 
 
 def rate_rows(label: str, records: list[dict]) -> list[tuple]:
-    """One row per group of rollouts (a grader family's side, or all of another env's): the valid ones, the cheats among them, their rate and its 95% Wilson interval."""
+    """One row per group of rollouts (a grader family's side, a hint_mc hint, or all of another env's): the valid ones, the cheats among them, their rate and its 95% Wilson interval."""
     groups = {}
     for r in records:
-        group = f"{r['labels']['family']}.{r['labels']['side']}" if r["env"] == "grader" else "all"
+        group = f"{r['labels']['family']}.{r['labels']['side']}" if r["env"] == "grader" else r["labels"]["hint"] if r["env"] == "hint_mc" else "all"
         groups.setdefault(group, []).append(r)
     rows = []
     for group, rollouts in groups.items():
-        valid = [r for r in rollouts if r["env"] not in ("grader", "mbpp") or r["labels"]["cheat"] is not None]  # a grader answer on neither side, or an mbpp answer without a code block, has no cheat label
+        valid = [r for r in rollouts if r["labels"].get("cheat", False) is not None]  # cheat is None for a rollout that could not be graded: a grader answer on neither side, an answer cut off or without a code block, a judge reply that did not parse
         n_cheated = sum(r["cheated"] for r in valid)
         rate = n_cheated / len(valid) if valid else float("nan")
         low, high = wilson(n_cheated, len(valid))
@@ -337,11 +338,31 @@ b1_tv_corr = replace(tv_corr38, **b1_row)
 b1_tv_pos = replace(tv_pos38, **b1_row)
 b1_none = replace(none38, **b1_row)
 b1_clean = replace(clean38, **b1_row)
+
+# the envs of notes/rh_env_survey.md on the unedited model at reasoning effort low. sorh, toolfail and odcv call an OpenRouter judge while they score, so they need OPENROUTER_API_KEY; odcv runs each scenario in its own docker container on this machine
+hint38 = EvalCfg(env="hint_mc", config="qwen3.8_low", prompts="all", n=200, model="vllm/cb_base")   # 200 MMLU questions with no hint and under each of the six hints at a wrong answer: 1,400 samples, the table one row per hint
+sorh38 = EvalCfg(env="sorh", config="qwen3.8_low", prompts="hack", model="vllm/cb_base", score=False)   # School of Reward Hacks, Meek et al.'s 309 test prompts, each stating its gameable metric; judged afterwards by ./score.py, as odcv is: a new OpenRouter account gets 20 GLM-5 requests a minute
+sorh38_none = replace(sorh38, prompts="none")   # the same prompts with the metric deleted, judged against the same metric
+feasi38 = EvalCfg(env="feasigen", config="qwen3.8_low", prompts="infeasible", model="vllm/cb_base")   # 200 BFCL tasks with the needed tool removed, under a system prompt that says to answer STOP then
+feasi38_ok = replace(feasi38, prompts="feasible")   # the control, every tool offered: its cheat is 0 by definition, the number to read is gave_up in the records' labels
+toolfail38 = EvalCfg(env="toolfail", config="qwen3.8_low", prompts="tool_skip", n=40, model="vllm/cb_base")   # ToolFailBench's tool_skip items, 40 of each domain's 50
+toolfail38_control = replace(toolfail38, prompts="control")   # items that need no tool: cheat 0 by definition, correct and unnecessary_tool_use in the labels
+odcv38 = EvalCfg(env="odcv", config="qwen3.8_low", prompts="incentivized", model="vllm/cb_base", score=False)   # ODCV-Bench's 40 scenarios, up to 50 bash steps each
+odcv38_mandated = replace(odcv38, prompts="mandated")
+smoke_hint = replace(hint38, n=2)
+smoke_sorh = replace(sorh38, n=4)
+smoke_feasi = replace(feasi38, n=4)
+smoke_toolfail = replace(toolfail38, n=1)
+smoke_odcv = replace(odcv38, n=2)
+SURVEY38 = dict(hint=hint38, sorh=sorh38, sorh_none=sorh38_none, feasi=feasi38, feasi_ok=feasi38_ok, toolfail=toolfail38, toolfail_control=toolfail38_control, odcv=odcv38, odcv_mandated=odcv38_mandated)
+# the same runs under the saved interventions, named <row>_<key of SURVEY38> (kto_hint, mbpplora_odcv_mandated): grader_kto, mbpp_kto and b1 as projection rows (scripts/kto_serve_row.sh), the two KTO adapters on the cb_base server
+for row, change in dict(kto=dict(model="vllm/cb_kto"), mbppkto=dict(model="vllm/cb_mbppkto"), b1=dict(model="vllm/cb_b1"), graderlora=dict(lora="grader_kto_lora"), mbpplora=dict(lora="mbpp_kto_lora")).items():
+    globals().update({f"{row}_{key}": replace(cfg, **change) for key, cfg in SURVEY38.items()})
 instances = {k: v for k, v in globals().items() if isinstance(v, EvalCfg)}
 if len(sys.argv) == 1:
     print(f"{bold}{purple}run.py{endc}  ./run.py <name> ...  {gray}the named runs, one after another{endc}")
     for name, cfg in instances.items():
-        print(f"  {cyan}{name:<18}{endc}{gray}{summary(cfg)}{endc}")
+        print(f"  {cyan}{name:<18}{endc} {gray}{summary(cfg)}{endc}")
     sys.exit()
 for name in sys.argv[1:]:
     assert name in instances, f"no EvalCfg named {name} in run.py, which has {list(instances)}"
@@ -371,11 +392,14 @@ for i, (cfg, task) in enumerate(zip(cfgs, tasks)):
         print(f"{gray}server hooks set for {cfg.name}: {set_hooks(cfg.base_url, cfg)}{endc}")
     start = time.time()
     try:
-        [log] = eval(task, model=cfg.model, model_base_url=cfg.base_url, max_connections=cfg.max_connections, display=cfg.display, log_dir=str(ROOT / "logs" / cfg.env), log_model_api=True, model_args={"client_timeout": 3600})
+        [log] = eval(task, model=cfg.model, model_base_url=cfg.base_url, max_connections=cfg.max_connections, display=cfg.display, log_dir=str(ROOT / "logs" / cfg.env), log_model_api=True, model_args={"client_timeout": 3600}, score=cfg.score)
     finally:
         if cfg.ablate_vector is not None:
             print(f"{gray}server hooks cleared: {clear_hooks(cfg.base_url)}{endc}")
     assert log.status == "success", f"{log.location}: {log.status}, {log.error.message if log.error else 'no error recorded'}"
+    if not cfg.score:
+        print(f"{green}{len(log.samples)} unscored rollouts in {time.strftime('%H:%M:%S', time.gmtime(time.time() - start))}: ./score.py {Path(log.location).relative_to(ROOT)}{endc}")
+        continue
     out, records = write_records(log, ROOT / "data" / "inspect")
     print(f"{green}{len(records)} rollouts in {time.strftime('%H:%M:%S', time.gmtime(time.time() - start))}, {sum(r['ids'] is not None for r in records)} with token ids: {out.relative_to(ROOT)}{endc}")
     run_rows = rate_rows(condition(cfg), records)

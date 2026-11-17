@@ -3650,9 +3650,10 @@ wheels = [
 [[package]]
 name = "rhenvs"
 version = "0.1.0"
-source = { git = "https://github.com/ekhadley/rh-envs#3994782013c1619156919aaf1a873fa1e74b55d4" }
+source = { git = "https://github.com/ekhadley/rh-envs#e200d2cb81b3293c9373cbcd408aee0019814a24" }
 dependencies = [
     { name = "datasets" },
+    { name = "huggingface-hub" },
     { name = "impossiblebench" },
     { name = "inspect-ai" },
     { name = "omegaconf" },
