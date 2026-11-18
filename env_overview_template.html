@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reward-hacking envs: base data and what was run on each</title>
+<style>
+:root{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--raised:#242423;--line:#2c2c2a;--axis:#383835;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--blue:#3987e5;--red:#e66767;--mid:#383835}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1560px;margin:0 auto;padding:36px 28px 64px}
+.eyebrow{color:var(--muted);font-size:13px}
+h1{font-size:30px;line-height:1.2;margin:6px 0 10px;font-weight:650;letter-spacing:-.02em}
+h2{font-size:21px;margin:0 0 6px;font-weight:620;letter-spacing:-.01em}
+p{margin:0 0 10px;max-width:980px}
+.sub{color:var(--ink2)}
+section{border-top:1px solid var(--line);padding-top:24px;margin-top:30px}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:18px 0 0;max-width:1100px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile b{display:block;font-size:28px;line-height:1.15;font-weight:640}
+.tile span{color:var(--ink2);font-size:13px;line-height:1.35;display:block;margin-top:3px}
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0 0;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--axis) transparent}
+.cap{color:var(--ink2);font-size:13px;line-height:1.5;margin:10px 0 0;max-width:1100px}
+ul{margin:0 0 10px;padding-left:20px;max-width:980px}li{margin:3px 0}
+code{font:12.5px ui-monospace,monospace;color:var(--ink)}
+table{border-collapse:collapse;font-size:12.5px}
+table.plain{width:100%}
+table.plain th,table.plain td{padding:6px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+table.plain th{color:var(--muted);font-weight:540;white-space:nowrap}
+table.plain td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.plain td.c{text-align:center}
+table.plain td:first-child{font-weight:600;white-space:nowrap}
+.dim{color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ink)}
+.ring{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid var(--ink2)}
+table.mx{font-variant-numeric:tabular-nums}
+table.mx th,table.mx td{padding:0}
+table.mx thead th{font-weight:540;color:var(--ink2);font-size:11.5px}
+table.mx th.kind{text-align:center;color:var(--muted);border-bottom:1px solid var(--axis);padding:0 4px 3px;font-size:11.5px;white-space:nowrap}
+table.mx th.kind+th.kind{border-left:6px solid var(--surface)}
+table.mx th.cond{height:122px;vertical-align:bottom;padding-bottom:4px}
+table.mx th.cond div{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin:0 auto;color:var(--ink)}
+table.mx th.train{font-size:10px;color:var(--ink2);padding-bottom:5px;text-align:center}
+table.mx th.train span{border:1px solid var(--axis);border-radius:3px;padding:0 3px;white-space:nowrap}
+table.mx th.rowlab{text-align:left;font-weight:480;color:var(--ink);padding:0 12px 0 14px;white-space:nowrap;font-size:12.5px}
+table.mx tr.grp th{text-align:left;color:var(--muted);font-weight:560;font-size:11.5px;padding:10px 0 3px;white-space:nowrap}
+table.mx td.base{text-align:right;padding:0 10px 0 4px;white-space:nowrap;font-size:12.5px}
+table.mx td.base small{color:var(--muted);font-size:10.5px;margin-left:5px}
+table.mx td.cell{width:40px;min-width:40px;height:26px;text-align:center;font-size:11.5px;border:1px solid var(--surface);border-radius:5px;position:relative;cursor:default}
+table.mx td.cell.gap{border-left-width:7px}
+table.mx td.none{color:#4a4a47}
+table.mx td.ns{background:var(--raised);color:var(--ink2)}
+table.mx td.fit{box-shadow:inset 0 0 0 2px var(--ink)}
+table.mx td.held{box-shadow:inset 0 0 0 1px var(--surface);outline:1.5px dashed var(--ink);outline-offset:-3px}
+table.mx td.will::after{content:"w";position:absolute;right:2px;top:-2px;font-size:8.5px;opacity:.8}
+table.mx td.cell:hover{filter:brightness(1.25)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12.5px;color:var(--ink2);margin:12px 0 0;align-items:center}
+.legend .sw{display:inline-block;width:26px;height:16px;border-radius:4px;vertical-align:-3px;margin-right:6px}
+.legend .grad{display:inline-block;width:180px;height:12px;border-radius:3px;vertical-align:-1px;margin:0 6px;background:linear-gradient(90deg,var(--blue),var(--mid),var(--red))}
+#tip{position:fixed;z-index:9;pointer-events:none;background:#0c0c0b;border:1px solid var(--axis);border-radius:8px;padding:8px 11px;font-size:12.5px;line-height:1.45;max-width:420px;display:none;box-shadow:0 6px 18px #000a}
+#tip b{display:block;font-size:13.5px;font-weight:620}#tip span{display:block;color:var(--ink2)}#tip i{display:block;color:var(--muted);font-style:normal;margin-top:3px}
+svg text{font-family:inherit}
+footer{border-top:1px solid var(--line);margin-top:34px;padding-top:12px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">ortho · env overview · 2026-11-18</div>
+<h1>Reward-hacking envs with base-model data, and what was run on each</h1>
+<p class="sub">An inventory, built from the records under <code>data/inspect/</code>, the Terminal-Bench jobs and the CheatBench verdicts. The base model is Qwen3.8-27B at reasoning effort low unless a row says otherwise. A rate is cheats over valid rollouts. An intervention is a served row: a vector added to the residual stream, here with a negative sign (steering), a direction projected out by a hook (projection), or a LoRA adapter.</p>
+<div class="tiles" id="tiles"></div>
+
+<section>
+<h2>The environments</h2>
+<p class="sub">One row per env with a base run of more than a smoke test. <code>impossible_bench</code> is left out: its only record is 2 samples on Qwen3.6-27B.</p>
+<div class="fig"><table class="plain" id="envs"></table></div>
+<p class="cap">Base rollouts: the rollouts behind the base rates in the next figure, invalid ones included (MBPP: the 495 test-split tasks of a 954-task run; secret_number: 96 of 256 games). Conditions with data: interventions with a record on at least one of the env's cheat arms, Will's rows included.</p>
+</section>
+
+<section>
+<h2>Base cheat rates, beside each env's control arm</h2>
+<p class="sub">Filled: the arm where cheating is possible or rewarded. Hollow: the same label on the matched control arm, where the incentive is absent. Bars are 95% Wilson intervals.</p>
+<div class="fig"><div class="legend" style="margin:0 0 6px"><span><svg width="14" height="12"><circle cx="7" cy="6" r="5" fill="#3987e5"/></svg> incentive arm</span><span><svg width="14" height="12"><circle cx="7" cy="6" r="4" fill="none" stroke="#c3c2b7" stroke-width="2"/></svg> control arm</span></div><svg id="base"></svg></div>
+<p class="cap">MBPP is the test split of <code>mbpp38</code> (454 valid of 495); <code>mbpp38_x4</code> holds four more samples of every task. secret_number is games 0-95 of <code>secret38</code>, which cheated in 126 of its 256 games. The hint_mc control is one number, the no-hint rate of picking the letter a hint would have named, repeated on each hint's row; the terminal_verifier control is the possible mode on all three rows. CheatBench's base is the row run on our server (Will's base row: 108 of 122).</p>
+</section>
+
+<section>
+<h2>Cheat rate under each intervention</h2>
+<p class="sub">Rows are cheat arms, columns are served rows. A number is the cheat rate in percent; a blank cell has no record. The Base column is the unedited model.</p>
+<div class="fig"><table class="mx" id="main"></table><div class="legend" id="legend"></div></div>
+<p class="cap">Colour is the change from the base rate as a share of the room available: a fall as a share of the base rate (-100% is no cheating left), a rise as a share of what was left to 100%. A cell is coloured only when a two-sided Fisher exact test against the base counts gives p &lt; 0.01, with no correction over the page's cells; hover for counts, intervals and p. The test is unpaired. Solid outline: the arm's prompts are the ones the row's direction or adapter was fit on. Dashed outline: the same env, held-out families or tasks. The grader directions were fit on reasoning-on rollouts except <code>domlast</code> and <code>domresp</code>, which were fit on reasoning-off records. <b>w</b>: Will's run on his task pool, compared with his own base. Rows run on different days and servers.</p>
+</section>
+
+<section>
+<h2>Control arms under the same interventions</h2>
+<p class="sub">The arms with no incentive, and Terminal-Bench. Each row's label says what the number counts, so a higher number is better on some rows and worse on others. Colour is the direction of change only: blue lower than base, red higher.</p>
+<div class="fig"><table class="mx" id="controls"></table></div>
+<p class="cap">Same colour rule and outlines as above. MMLU, GSM8K and IFEval were also run for a few rows (<code>proj</code>, <code>projall</code>, <code>cm</code>, Will's rows) and are on the 2026-11-06 cheating-against-capability page.</p>
+</section>
+
+<section>
+<h2>What each direction and adapter was fit on</h2>
+<p class="sub">Only two envs have been fit on: grader and MBPP. One direction (<code>b1</code>) and one probe were fit on both together.</p>
+<div class="fig"><table class="plain" id="trained"></table><div class="legend"><span><span class="dot"></span>&nbsp; cheating and honest rollouts the fit separates</span><span><span class="ring"></span>&nbsp; neutral rollouts the fit holds fixed (token KL from the base model)</span></div></div>
+<p class="cap">The grader fits use Will's s9-gr rollouts of the five main families, reasoning on, except <code>nocot_dom</code>, which uses reasoning-off records. The MBPP fits use the train and validation splits of <code>mbpp38</code> and <code>mbpp38_x4</code>. terminal_verifier, secret_number, hint_mc, sorh, feasigen, toolfail, odcv and CheatBench are in no fit; the KTO sweep's screen scores base rollouts of terminal_verifier and secret_number but does not train on them.</p>
+</section>
+
+<section>
+<h2>Refusal, the behaviour abliteration was built for</h2>
+<p class="sub">Not a reward-hacking env. heretic's refusal direction as our projection hook, with random rows as controls. The number is the share of answers its keyword match calls a refusal, or for the grader rows the share of invalid or wrong-side answers.</p>
+<div class="fig"><table class="mx" id="refusal"></table></div>
+<p class="cap">No refusal row was run on a hack-prompt arm of any reward-hacking env, and no reward-hacking row was run on the refusal env.</p>
+</section>
+
+<section>
+<h2>Qwen3.6-27B, October</h2>
+<p class="sub">The earlier model: grader and secret_number, with one vector (<code>grader_parity_cheat_vs_clean</code>) added, subtracted or projected out.</p>
+<div class="fig"><table class="mx" id="q36"></table></div>
+<p class="cap">The base grader rows are 1,024 samples a side. Other secret_number base runs on this model: 23 and 24 cheats of 256 games.</p>
+</section>
+
+<section>
+<h2>Other base models on grader</h2>
+<p class="sub">Reasoning on, no interventions. Cheats over valid answers.</p>
+<div class="fig"><table class="plain" id="oss"></table></div>
+<p class="cap">The gpt-oss runs go through OpenRouter (DeepInfra bf16). Reasoning-off rates for the three models are on <code>figures/nocot_families.html</code>.</p>
+</section>
+
+<section>
+<h2>Not in the records</h2>
+<ul>
+<li>No intervention has a record on every env. <code>kto</code>, <code>mbppkto</code>, <code>b1</code> and the two LoRAs cover the most.</li>
+<li>Steering rows on our servers: <code>cm</code> has reasoning-on runs on grader, MBPP and terminal_verifier; <code>a3</code>, <code>dpo</code> and <code>srand</code> have reasoning-off grader runs only. The <code>dpo_*</code> reasoning-on runs in <code>run.py</code> were never run. No steering row has a run on secret_number or the five survey envs.</li>
+<li>Random-direction controls: projection on MBPP and held-out grader (<code>mprojrand</code>, <code>mprojallrand</code>), steering on reasoning-off grader (<code>srand</code>) and in Will's pool. None on terminal_verifier, secret_number, the survey envs or CheatBench in our runs.</li>
+<li><code>mbpplora</code> has no run on the main grader families. <code>kto</code> has no run on MBPP's original test.</li>
+<li>secret_number, odcv and CheatBench have no control arm.</li>
+</ul>
+</section>
+
+<footer>Built by <code>env_overview.py</code> from <code>data/inspect/</code>, <code>logs/tbench/jobs/</code> and <code>acts/kto_sweep/cheatbench/</code>. Will's cells are constants from his reports. Grader rates leave out the removed <code>pets</code> and <code>fruit_vegetable</code> families.</footer>
+</main>
+<div id="tip"></div>
+<script>
+const D = /*DATA*/;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const pct = x => { const v = 100 * x; return v === 0 ? "0" : v < 9.95 ? v.toFixed(1) : String(Math.round(v)); };
+const pct1 = x => (100 * x).toFixed(1) + "%";
+const KIND = {steer: "steering: a vector added", proj: "projection hook", lora: "LoRA"};
+const TRAIN = {G: "grader", M: "MBPP", "G+M": "grader + MBPP", rand: "random direction", R: "refusal prompts", P: "grader parity (Qwen3.6)"};
+
+const tip = $("tip");
+function showTip(e, html) { tip.innerHTML = html; tip.style.display = "block"; moveTip(e); }
+function moveTip(e) { const w = tip.offsetWidth, h = tip.offsetHeight; tip.style.left = Math.min(e.clientX + 14, innerWidth - w - 8) + "px"; tip.style.top = (e.clientY + 16 + h > innerHeight ? e.clientY - h - 10 : e.clientY + 16) + "px"; }
+function hideTip() { tip.style.display = "none"; }
+function bindTips(root) { root.querySelectorAll("[data-tip]").forEach(el => { el.addEventListener("mouseenter", e => showTip(e, el.dataset.tip)); el.addEventListener("mousemove", moveTip); el.addEventListener("mouseleave", hideTip); }); }
+
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const MID = hex("#383835"), BLUE = hex("#3987e5"), RED = hex("#e66767");
+function shade(f) {  // f in [-1, 1]: the change as a share of the room available
+  const end = f < 0 ? BLUE : RED, t = 0.3 + 0.7 * Math.min(1, Math.abs(f));
+  const c = MID.map((m, i) => Math.round(m + (end[i] - m) * t));
+  const lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  return `background:rgb(${c});color:${lum > 0.45 ? "#0b0b0b" : "#f0efec"}`;
+}
+function change(c) { const r = c.k / c.n, b = c.bk / c.bn; return r < b ? (r - b) / b : b < 1 ? (r - b) / (1 - b) : 0; }
+
+function matrix(el, M) {
+  const conds = M.conds.filter(c => M.rows.some(r => r.cells[c.id]));
+  const gap = i => i > 0 && conds[i].kind !== conds[i - 1].kind;
+  let h = "<thead><tr><th></th><th></th>";
+  for (let i = 0; i < conds.length;) { let j = i; while (j < conds.length && conds[j].kind === conds[i].kind) j++; h += `<th class="kind" colspan="${j - i}">${KIND[conds[i].kind]}</th>`; i = j; }
+  h += `</tr><tr><th></th><th class="cond"><div>Base</div></th>` + conds.map(c => `<th class="cond" data-tip="${esc(`<b>${c.label}</b><span>${esc(c.desc)}</span><i>fit on: ${TRAIN[c.train]}</i>`)}"><div>${esc(c.label)}</div></th>`).join("");
+  h += `</tr><tr><th></th><th class="train dim">fit on</th>` + conds.map(c => `<th class="train"><span>${c.train}</span></th>`).join("") + "</tr></thead><tbody>";
+  let group = null;
+  for (const r of M.rows) {
+    if (r.group !== group) { group = r.group; h += `<tr class="grp"><th colspan="${conds.length + 2}">${esc(group)}</th></tr>`; }
+    const b = r.base, lab = `<b>${esc(r.group)}: ${esc(r.label)}</b>` + (r.note ? `<span>${esc(r.note)}</span>` : "");
+    h += `<tr><th class="rowlab" data-tip="${esc(lab)}">${esc(r.label)}</th>`;
+    h += `<td class="base" data-tip="${esc(lab + `<span>base ${b.k}/${b.n} = ${pct1(b.k / b.n)} [${pct1(b.ci[0])}, ${pct1(b.ci[1])}]</span><i>${b.total} rollouts: ${b.runs.join(", ")}</i>`)}">${pct(b.k / b.n)}<small>${b.k}/${b.n}</small></td>`;
+    conds.forEach((c, i) => {
+      const x = r.cells[c.id];
+      if (!x) { h += `<td class="cell none${gap(i) ? " gap" : ""}">·</td>`; return; }
+      const sig = x.p < 0.01, f = change(x);
+      const t = `<b>${esc(c.label)} on ${esc(r.group)}: ${esc(r.label)}</b><span>${x.k}/${x.n} = ${pct1(x.k / x.n)} [${pct1(x.ci[0])}, ${pct1(x.ci[1])}]${x.total && x.total !== x.n ? `, ${x.total - x.n} of ${x.total} invalid` : ""}</span><span>${x.will ? "Will's base" : "base"} ${x.bk}/${x.bn} = ${pct1(x.bk / x.bn)}</span><span>change ${f >= 0 ? "+" : ""}${Math.round(100 * f)}% of the room, Fisher p = ${x.p < 0.0001 ? x.p.toExponential(1) : x.p.toFixed(4)}</span>` + (x.mark === "fit" ? "<i>fit on these prompts</i>" : x.mark === "held" ? "<i>fit on this env, these families or tasks held out</i>" : "") + (x.will ? "<i>Will's run, his task pool</i>" : x.runs ? `<i>${x.runs.join(", ")}</i>` : "");
+      h += `<td class="cell${sig ? "" : " ns"}${x.mark ? " " + x.mark : ""}${x.will ? " will" : ""}${gap(i) ? " gap" : ""}" style="${sig ? shade(f) : ""}" data-tip="${esc(t)}">${pct(x.k / x.n)}</td>`;
+    });
+    h += "</tr>";
+  }
+  el.innerHTML = h + "</tbody>";
+  bindTips(el);
+}
+["main", "controls", "refusal", "q36"].forEach(k => matrix($(k), D[k]));
+$("legend").innerHTML = `<span>-100%<span class="grad"></span>+100% of the room</span><span><span class="sw" style="background:#242423"></span>Fisher p ≥ 0.01 against base</span><span><span class="sw" style="box-shadow:inset 0 0 0 2px #f0efec"></span>fit on these prompts</span><span><span class="sw" style="outline:1.5px dashed #f0efec;outline-offset:-3px"></span>same env, held out of the fit</span><span><b>w</b>&nbsp; Will's pool, his own base</span><span>· &nbsp;no record</span>`;
+
+// the env table
+const envRows = name => D.main.rows.filter(r => r.group.startsWith(name));
+$("envs").innerHTML = "<thead><tr>" + ["Env", "Source", "Task", "The cheat", "Label", "Turns", "Tools", "Sandbox", "Control arm", "Fit on it", "Base rollouts", "Conditions with data"].map(x => `<th>${x}</th>`).join("") + "</tr></thead><tbody>" + D.envs.map(e => {
+  const rows = envRows(e.name), conds = new Set();
+  let total = 0;
+  rows.forEach(r => { total += r.base.total; Object.keys(r.cells).forEach(c => conds.add(c)); });
+  return `<tr><td>${e.name}</td><td class="dim">${esc(e.source)}</td><td>${esc(e.task)}</td><td>${esc(e.cheat)}</td><td>${esc(e.label)}</td><td>${e.turns}</td><td>${e.tools || '<span class="dim">none</span>'}</td><td>${e.sandbox || '<span class="dim">none</span>'}</td><td>${esc(e.control)}</td><td>${e.fit === "nothing" ? '<span class="dim">nothing</span>' : esc(e.fit)}</td><td class="num">${total.toLocaleString()}</td><td class="num" data-tip="${esc([...conds].join(", "))}">${conds.size}</td></tr>`;
+}).join("") + "</tbody>";
+bindTips($("envs"));
+
+// tiles
+const allConds = new Set(D.main.rows.flatMap(r => Object.keys(r.cells)));
+const filled = D.main.rows.reduce((s, r) => s + Object.keys(r.cells).length, 0);
+$("tiles").innerHTML = [[D.envs.length, "envs with a base run on Qwen3.8-27B"], [D.main.rows.length, "cheat arms across them"], [allConds.size, "interventions with a record on at least one arm"], [`${filled} of ${D.main.rows.length * allConds.size}`, "arm × intervention pairs with a record"], [2, "envs any direction or adapter was fit on (grader, MBPP)"]].map(([b, s]) => `<div class="tile"><b>${b}</b><span>${s}</span></div>`).join("");
+
+// base rates
+(function () {
+  const rows = D.main.rows, L = 330, W = 520, R = 300, rh = 24, gh = 26;
+  let y = 26, out = "", group = null;
+  const x = v => L + v * W;
+  const ys = [];
+  for (const r of rows) { if (r.group !== group) { group = r.group; y += gh; ys.push([null, y - 8, group]); } ys.push([r, y + rh / 2]); y += rh; }
+  const H = y + 8;
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) out += `<line x1="${x(v)}" x2="${x(v)}" y1="22" y2="${H - 4}" stroke="${v ? "#2c2c2a" : "#383835"}"/><text x="${x(v)}" y="14" text-anchor="middle" font-size="11.5" fill="#898781">${100 * v}%</text>`;
+  out += `<text x="${L + W + 24}" y="14" font-size="11.5" fill="#898781">cheated / valid</text><text x="${L + W + 150}" y="14" font-size="11.5" fill="#898781">control arm</text>`;
+  for (const [r, cy, g] of ys) {
+    if (!r) { out += `<text x="0" y="${cy}" font-size="11.5" font-weight="600" fill="#898781">${esc(g)}</text>`; continue; }
+    const b = r.base, c = r.control, rate = b.k / b.n;
+    out += `<text x="14" y="${cy + 4}" font-size="12.5" fill="#f0efec">${esc(r.label)}</text>`;
+    if (c) out += `<line x1="${x(c.ci[0])}" x2="${x(c.ci[1])}" y1="${cy}" y2="${cy}" stroke="#898781" stroke-width="2"/><circle cx="${x(c.k / c.n)}" cy="${cy}" r="4" fill="#1a1a19" stroke="#c3c2b7" stroke-width="2"/>`;
+    out += `<line x1="${x(b.ci[0])}" x2="${x(b.ci[1])}" y1="${cy}" y2="${cy}" stroke="#3987e5" stroke-width="2"/><circle cx="${x(rate)}" cy="${cy}" r="5" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>`;
+    out += `<text x="${L + W + 24}" y="${cy + 4}" font-size="12" fill="#c3c2b7" style="font-variant-numeric:tabular-nums">${pct1(rate)}  ${b.k}/${b.n}</text>`;
+    if (c) out += `<text x="${L + W + 150}" y="${cy + 4}" font-size="12" fill="#898781" style="font-variant-numeric:tabular-nums">${pct1(c.k / c.n)}  ${c.k}/${c.n}</text>`;
+    const t = `<b>${esc(r.group)}: ${esc(r.label)}</b><span>base ${b.k}/${b.n} = ${pct1(rate)} [${pct1(b.ci[0])}, ${pct1(b.ci[1])}]</span><i>${b.runs.join(", ")}</i>` + (c ? `<span>control (${esc(c.label)}): ${c.k}/${c.n} = ${pct1(c.k / c.n)} [${pct1(c.ci[0])}, ${pct1(c.ci[1])}]</span><i>${c.run}</i>` : "<span>no control arm</span>") + (r.note ? `<i>${esc(r.note)}</i>` : "");
+    out += `<rect x="0" y="${cy - rh / 2}" width="${L + W + R}" height="${rh}" fill="transparent" data-tip="${esc(t)}"/>`;
+  }
+  const svg = $("base");
+  svg.setAttribute("viewBox", `0 0 ${L + W + R} ${H}`); svg.setAttribute("width", L + W + R); svg.setAttribute("height", H);
+  svg.innerHTML = out; bindTips(svg);
+})();
+
+// what was fit on what
+const DATA_COLS = ["grader hack-prompt rollouts", "grader no-metadata and agreeing-grader rollouts", "MBPP impossible test, train + validation", "MBPP original test", "refusal prompts"];
+$("trained").innerHTML = "<thead><tr><th>Direction or adapter</th><th>Kind</th><th>Method</th>" + DATA_COLS.map(c => `<th style="white-space:normal;max-width:130px;text-align:center">${c}</th>`).join("") + "<th>Served rows</th></tr></thead><tbody>" + D.trained.map(a => `<tr><td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td>${esc(a.method)}</td>` + [...a.data].map(ch => `<td class="c">${ch === "x" ? '<span class="dot"></span>' : ch === "n" ? '<span class="ring"></span>' : ""}</td>`).join("") + `<td>${a.rows ? esc(a.rows) : '<span class="dim">not served</span>'}</td></tr>`).join("") + "</tbody>";
+
+// other models
+$("oss").innerHTML = "<thead><tr><th>Model</th>" + ["5 main families, hack prompts", "7 held-out families, hack prompts", "no grader metadata", "agreeing grader"].map(c => `<th style="text-align:right">${c}</th>`).join("") + "</tr></thead><tbody>" + D.oss.map(m => `<tr><td>${esc(m.model)}</td>` + m.cells.map(c => `<td class="num" data-tip="${esc(`<b>${c.run}</b><span>${c.total - c.n} of ${c.total} invalid</span>`)}">${pct1(c.k / c.n)} <span class="dim">${c.k}/${c.n}</span></td>`).join("") + "</tr>").join("") + "</tbody>";
+bindTips($("oss"));
+</script>
+</body>
+</html>

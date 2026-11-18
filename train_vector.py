@@ -1,7 +1,7 @@
 #%%
 """A direction trained on rollouts of one env (ENV) and applied at the output of each decoder layer of a window: MODE add adds it with a fixed norm, MODE
 project removes its component around a per-layer mean residual. N_DIRS is 1 for one direction at every layer of the window, len(LAYERS) for one per layer.
-GEN_ONLY hooks generated tokens only, pinned at the mean over the generated tokens of the non-cheating rollouts; otherwise every position, pinned at the mean
+GEN_ONLY hooks generated tokens only, pinned at the mean over the generated tokens of the non-cheating train rollouts and the neutral rollouts; otherwise every position, pinned at the mean
 over every token of the train rows. LOSS dpo prefers a non-cheating completion of a prompt to a cheating one. LOSS kto scores each completion alone: cheating
 below the base model, honest above it, and neutral rollouts held by their token KL from the base model. ENV grader: rows and pairs from Will's s9-gr manifest
 (willjgriff/reward-hacking-ablation): the Grader rows G9 was fit on, five families, pairs within a (family, side) cell, the manifest's train split; its eval split
