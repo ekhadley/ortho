@@ -35,7 +35,7 @@ pets = replace(parity, family="pets_listed")
 parity_nothink = replace(parity, config="nothink")   # reasoning off: the cheat rate at zero reasoning length
 pets_nothink = replace(pets, config="nothink")
 smoke_grader = EvalCfg(env="grader", config="default", family="all", system="none", prompts="hack", n=2)
-secret = EvalCfg(env="secret_number", config="qwen3.6-27b", n=256, seed=0)
+secret = EvalCfg(env="secret_number", config="qwen3.6-27b", n=96, seed=0)
 lcb_paper = EvalCfg(env="impossible_bench", config="paper", n=50)
 smoke_secret = replace(secret, n=2)
 smoke_lcb = replace(lcb_paper, n=2)
@@ -69,6 +69,8 @@ parity38 = replace(parity, config="qwen3.8_low", model="vllm/cb_base", n=128)
 nothink38 = replace(parity38, config="nothink", family="all", n=256)   # reasoning off, every main family; clean and none are the wrong-side rate with no incentive
 nothink38_clean = replace(nothink38, prompts="clean")
 nothink38_none = replace(nothink38, prompts="none")
+nothink38_generic = replace(nothink38, system="generic")   # hack prompts under the generic and the very_hacker system prompt: the prompt sets of prompt_dom.py's differences
+nothink38_vh = replace(nothink38, system="very_hacker")
 nothink38_heldout = replace(nothink38, family="heldout")
 nothink38_heldout_clean = replace(nothink38_heldout, prompts="clean")
 nothink38_heldout_none = replace(nothink38_heldout, prompts="none")
@@ -304,7 +306,7 @@ smoke_secret_ablate = replace(secret_ablate, n=8)
 
 
 def rate_rows(label: str, records: list[dict]) -> list[tuple]:
-    """One row per group of rollouts (a grader family's side, a hint_mc hint, or all of another env's): the valid ones, the cheats among them, their rate and its 95% Wilson interval."""
+    """One row per group of rollouts (a grader family's side, a hint_mc hint, or all of another env's): the valid ones, the cheats among them (refusals, for the refusal env), their rate and its 95% Wilson interval."""
     groups = {}
     for r in records:
         group = f"{r['labels']['family']}.{r['labels']['side']}" if r["env"] == "grader" else r["labels"]["hint"] if r["env"] == "hint_mc" else "all"
@@ -358,6 +360,17 @@ SURVEY38 = dict(hint=hint38, sorh=sorh38, sorh_none=sorh38_none, feasi=feasi38, 
 # the same runs under the saved interventions, named <row>_<key of SURVEY38> (kto_hint, mbpplora_odcv_mandated): grader_kto, mbpp_kto and b1 as projection rows (scripts/kto_serve_row.sh), the two KTO adapters on the cb_base server
 for row, change in dict(kto=dict(model="vllm/cb_kto"), mbppkto=dict(model="vllm/cb_mbppkto"), b1=dict(model="vllm/cb_b1"), graderlora=dict(lora="grader_kto_lora"), mbpplora=dict(lora="mbpp_kto_lora")).items():
     globals().update({f"{row}_{key}": replace(cfg, **change) for key, cfg in SURVEY38.items()})
+# heretic's refusal eval (rhenvs refusal: its 100 harmful and 100 harmless test prompts, 4 samples of each, refusal by its keyword match) with reasoning off, heretic's setting, and at reasoning effort low
+refusal38 = EvalCfg(env="refusal", config="nothink", prompts="harmful", epochs=4, model="vllm/cb_base")
+refusal38_harmless = replace(refusal38, prompts="harmless")   # the control: prompts the model answers, so a refusal rate near 0 and a check on what a hook does to ordinary answers
+refusal38_low = replace(refusal38, config="qwen3.8_low")
+refusal38_low_harmless = replace(refusal38_harmless, config="qwen3.8_low")
+smoke_refusal = replace(refusal38, n=2, epochs=1)
+REFUSAL38 = dict(harmful=refusal38, harmless=refusal38_harmless, harmful_low=refusal38_low, harmless_low=refusal38_low_harmless, none=none38, clean=clean38)
+# the same runs and the grader side-effect runs under refusal_dom.py's projection rows (scripts/kto_serve_row.sh), named <row>_<key of REFUSAL38>: heretic's difference-of-means refusal direction at decoder layers
+# 30, 33, ..., 60 (refdom) and at every decoder layer (refdomall), every position, pinned at the harmless mean, and random unit rows at the same layers and pins (refdomrand, refdomallrand)
+for row in ("refdom", "refdomall", "refdomrand", "refdomallrand"):
+    globals().update({f"{row}_{key}": replace(cfg, model=f"vllm/cb_{row}") for key, cfg in REFUSAL38.items()})
 instances = {k: v for k, v in globals().items() if isinstance(v, EvalCfg)}
 if len(sys.argv) == 1:
     print(f"{bold}{purple}run.py{endc}  ./run.py <name> ...  {gray}the named runs, one after another{endc}")

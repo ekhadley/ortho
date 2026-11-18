@@ -33,6 +33,7 @@ from rhenvs.hint_mc import hint_mc
 from rhenvs.impossible_bench import lcb
 from rhenvs.mbpp import mbpp
 from rhenvs.odcv import odcv
+from rhenvs.refusal import refusal
 from rhenvs.secret_number import secret_number
 from rhenvs.sorh import sorh
 from rhenvs.terminal_verifier import terminal_verifier
@@ -41,7 +42,7 @@ from safetensors import safe_open
 
 ROOT = Path(__file__).resolve().parent
 VECTORS = ROOT / "data" / "vectors"
-TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp, "hint_mc": hint_mc, "sorh": sorh, "feasigen": feasigen, "toolfail": toolfail, "odcv": odcv}
+TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp, "hint_mc": hint_mc, "sorh": sorh, "feasigen": feasigen, "toolfail": toolfail, "odcv": odcv, "refusal": refusal}
 TASK_FIELDS = ("config", "n", "family", "system", "prompts", "seed", "mode", "max_turns", "epochs")  # the EvalCfg fields that are task arguments
 ENVS_COMMIT = json.loads(distribution("rhenvs").read_text("direct_url.json"))["vcs_info"]["commit_id"]  # the rhenvs commit uv installed from git
 SCALINGS = ("row", "unit", "resid_norm")
@@ -52,14 +53,14 @@ INTERVENTION = ("lora", "add_vector", "add_layers", "add_alpha", "add_scaling", 
 class EvalCfg:
     env: str  # a key of TASKS
     config: str  # rhenvs configs/<env>/<config>.yaml: the prompts, the scaffold settings and the model block sent with every request
-    n: int | None = None  # grader: samples per side per family. secret_number: games. terminal_verifier: grids. toolfail: items per domain and target mode. impossible_bench: problems, mbpp and feasigen: tasks, hint_mc: questions, sorh: prompts, odcv: scenarios, None for all of them
+    n: int | None = None  # grader: samples per side per family. secret_number: games. terminal_verifier: grids. toolfail: items per domain and target mode. impossible_bench: problems, mbpp and feasigen: tasks, hint_mc: questions, sorh and refusal: prompts, odcv: scenarios, None for all of them
     family: str | None = None  # grader: a family under rhenvs configs/grader/families, or all
     system: str | None = None  # grader: none, generic or very_hacker
-    prompts: str | None = None  # the arm. grader: hack (the request with the other side's grader), clean (the side's own) or none (the request alone). hint_mc: none, one of the six hints, or all. sorh: hack (the prompt states its metric) or none. feasigen: infeasible (the needed tool removed) or feasible. toolfail: tool_skip, result_ignore, output_fabrication, tool_required (all three) or control. odcv: incentivized or mandated
+    prompts: str | None = None  # the arm. grader: hack (the request with the other side's grader), clean (the side's own) or none (the request alone). hint_mc: none, one of the six hints, or all. sorh: hack (the prompt states its metric) or none. feasigen: infeasible (the needed tool removed) or feasible. toolfail: tool_skip, result_ignore, output_fabrication, tool_required (all three) or control. odcv: incentivized or mandated. refusal: harmful or harmless
     seed: int | None = None  # secret_number: draws the secrets. terminal_verifier: draws the grids and the verifier offsets
     mode: str | None = None  # terminal_verifier: what verifier.py holds: possible, corrupted, corrupted_negative or verifier_bug
     max_turns: int | None = None  # terminal_verifier: commands per episode
-    epochs: int = 1  # terminal_verifier, mbpp, sorh, feasigen and odcv: samples per task
+    epochs: int = 1  # terminal_verifier, mbpp, sorh, feasigen, odcv and refusal: samples per task
     lora: str | None = None  # an adapter the server has loaded under that name
     add_vector: str | None = None  # a vector under data/vectors/<vectors>: each layer of add_layers gets its own row added to its output at every position
     add_layers: list[int] | None = None

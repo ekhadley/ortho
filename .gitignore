@@ -19,3 +19,6 @@ nohup.out
 data/
 acts/
 logs/*/
+
+# The refusal trace viewer (refusal_traces.py): answers to harmful requests
+figures/refusal_traces.html
