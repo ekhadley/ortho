@@ -118,6 +118,11 @@ mbpplora_heldout = replace(heldout38, lora="mbpp_kto_lora")   # train_lora.py EN
 mbpplora_mbpp = replace(mbpp38, lora="mbpp_kto_lora")   # every task; its train and validation splits are in-sample, so report the test split
 mbpplora_correct = replace(mbpp38_correct, lora="mbpp_kto_lora", base_url="http://localhost:8000/v1")
 mbpplora_tv_bug = replace(tv_bug38, lora="mbpp_kto_lora")
+# screen_vs_served.py's three directions, never served before, under mbpp_kto's hook (scripts/kto_serve_row.sh): does the teacher-forced screen predict the served cheat rate? Two samples of every task; the fits leave the test split out, so report the test split
+hbt_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hbt")   # dom_hunt_vr/b_late_sub_bt: a variance-ratio direction whose screen gains match grader_kto's
+hrwi_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hrwi")   # dom_hunt_vr/r_wi: the variance-ratio direction with the largest per-token margin on the screen
+hrat_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hrat")   # dom_hunt_new/synth_rat: the rationalizer-minus-honest difference of means, a large summed margin with a large honest loss
+mbpp38_x2 = replace(mbpp38, epochs=2)   # the base model on the server those three rows ran on
 mbpplora_tv_bug_mt6 = replace(tv_bug38_mt6, lora="mbpp_kto_lora")
 mbpplora_tv_corr = replace(tv_corr38, lora="mbpp_kto_lora")
 mbpplora_tv_pos = replace(tv_pos38, lora="mbpp_kto_lora")
