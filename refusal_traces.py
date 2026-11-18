@@ -1,8 +1,8 @@
 """Trace viewer for the refusal runs, laptop: every test-split rollout of the base model and the two refusal-direction rows (`refdom`: refusal_dom projected out at decoder layers 30, 33, ..., 60;
 `refdomall`: at all 64), reasoning off and at effort low, harmful and harmless prompts, 400 per cell. Fills refusal_traces_template.html (the page: styles and vanilla JS) and writes one self-contained page, figures/refusal_traces.html: a count table (click a count to
 list its rollouts), filters, a sortable list, and the selected rollout's prompt, reasoning and answer. Every rollout carries two labels, both on the first 400 characters of the answer: the env's
-(heretic's keywords, with the ones that matched) and a first-person one (heretic's keywords without the TOPICAL ones, or one of PHRASES). The page holds the model's answers to harmful requests,
-so it is gitignored."""
+(heretic's keywords, with the ones that matched) and a first-person one (heretic's keywords without the TOPICAL ones, or one of PHRASES). The page is a 14 MB build of
+records that are in the HF dataset, so it is gitignored."""
 import json
 from pathlib import Path
 

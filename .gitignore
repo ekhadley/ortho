@@ -20,5 +20,5 @@ data/
 acts/
 logs/*/
 
-# The refusal trace viewer (refusal_traces.py): answers to harmful requests
+# The refusal trace viewer (refusal_traces.py): a 14 MB build of records that are in the HF dataset
 figures/refusal_traces.html
