@@ -28,6 +28,7 @@ class SweepCfg:
     init: str = ""   # a saved vector of data/vectors/<model>/ to start from, with its pin, or sweep:<name> for a trained config of this sweep (its parameters, at this config's own pin); empty for init_scale * randn at the trained envs' pin
     init_scale: float = 1e-4
     full: bool = False   # also screen all 97 MBPP test pairs, not only the 58 under 2,500 tokens
+    save_at: tuple[int, ...] = ()   # steps after which the parameters and the train log so far are also saved, as vecs/<name>_step<n>.pt
 
 
 # checks of the screen itself
@@ -95,3 +96,12 @@ g_shift = replace(g0, shift=True, offset="learned")
 g_shift_b03 = replace(g_shift, beta=0.3)   # the loss saturates near a third of the log-prob push
 g_shift_kl1 = replace(g_shift, kl_weight=1.0)
 t_goffset = replace(g_offset, steps=0, init="sweep:g_offset")
+
+# rank-k subspaces at decoder layers 1-62 (every layer but the first and the last), 800 steps of each trained env
+w_g_r2 = SweepCfg(layers=tuple(range(1, 63)), rank=2, steps=800, save_at=(200, 400, 600))
+w_g_r8 = replace(w_g_r2, rank=8)
+w_m_r2 = replace(w_g_r2, env="mbpp", neutrals=("grader", "mbpp"))
+w_m_r8 = replace(w_m_r2, rank=8)
+w_b_r2 = replace(w_m_r2, env="both", steps=1600, save_at=(400, 800, 1200))
+w_b_r8 = replace(w_b_r2, rank=8)
+w_smoke = replace(w_m_r8, steps=4, save_at=(2,))   # a few of w_m_r8's steps: whether a 2,500-token batch fits with every layer in the graph

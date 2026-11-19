@@ -149,6 +149,7 @@ print(f"{cyan}neutrals, train / held: grader {len(NEUTRAL_TRAIN['grader'])} / {l
 PAD = AutoTokenizer.from_pretrained(MODEL_ID, revision=REVISION).pad_token_id
 model = AutoModelForImageTextToText.from_pretrained(MODEL_ID, revision=REVISION, dtype=t.bfloat16, device_map="cuda")
 model.requires_grad_(False)
+t.cuda.set_per_process_memory_fraction(0.93)   # the triton kernels of the linear-attention layers allocate outside torch's pool and fail if it holds the whole card
 model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 model.train()   # checkpointing only runs in train mode; the model has no dropout
 text = model.model.language_model
@@ -317,6 +318,7 @@ if stage == "run":
         sets = PAIR_SETS + ["mbpp_test"] * cfg.full
         cache([x for e in envs for x in TRAIN[e] if len(x["ids"]) <= cfg.max_len] + [x for e in cfg.neutrals for x in NEUTRAL_TRAIN[e] if len(x["ids"]) <= cfg.max_len] + [x for s in sets for x in PAIRS[s]] + [x for held in NEUTRAL_HELD.values() for x in held])
         cfg = getattr(kto_cfgs, name)   # cache() runs under its own
+        t.cuda.empty_cache()   # the cache pass's 6,000-token batches leave the pool far larger than a train step needs
         if cfg.max_len <= 2500: model.gradient_checkpointing_disable()   # the activations of a 2,500-token batch fit
         else: model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         mu, sigma = [x.cuda() for x in pin(cfg, base)]
@@ -356,6 +358,7 @@ if stage == "run":
                 kls += kl.tolist()
             opt.step()
             log.append(dict(loss=loss, cheat=sum(gain_c) / cfg.k, honest=sum(gain_h) / max(len(gain_h), 1), kl=sum(kls) / len(kls)))
+            if step + 1 in cfg.save_at: t.save(dict(v=v.detach().cpu(), c=c.detach().cpu(), cfg=dataclasses.asdict(cfg), log=log), OUT / "vecs" / f"{name}_step{step + 1}.pt")
             bar.set_description(f"{name} loss {loss:.3f} cheat {log[-1]['cheat']:+.1f} honest {log[-1]['honest']:+.1f} kl {log[-1]['kl']:.3f}")
         trained = time.time()
 
