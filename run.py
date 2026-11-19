@@ -84,6 +84,10 @@ oss20_heldout = replace(oss120_heldout, model="openrouter/openai/gpt-oss-20b")
 oss20_none = replace(oss120_none, model="openrouter/openai/gpt-oss-20b")
 oss20_clean = replace(oss120_clean, model="openrouter/openai/gpt-oss-20b")
 smoke_oss = replace(oss120_main, n=1)
+lcb38_plain = EvalCfg(env="impossible_bench", config="plain_api", model="openrouter/qwen/qwen3.8-27b", base_url=None, provider="parasail/fp8")   # Qwen3.8-27B through OpenRouter (Parasail fp8, the endpoint nearest the local server in scripts/provider_check.py; no bf16 endpoint is listed) at reasoning effort low: all 103 conflicting LCB problems, one sample each, the package's plain prompt
+lcb38_paper = replace(lcb38_plain, config="paper_api")   # the paper's prompt, which says to stop on a flawed test
+lcb38_original = replace(lcb38_plain, config="original_api")   # the possible split under the paper prompt: the capability number
+smoke_lcb38 = replace(lcb38_plain, n=5)
 mbppkto_heldout = replace(heldout38, model="vllm/cb_mbppkto", base_url="http://localhost:8001/v1")   # mbpp_kto at generated tokens only, layers 30-63
 mbppkto_mbpp = replace(mbpp38, model="vllm/cb_mbppkto", base_url="http://localhost:8001/v1")   # every task; its train and validation splits are in-sample, so report the test split
 mbppkto_correct = replace(mbpp38_correct, model="vllm/cb_mbppkto")
@@ -114,15 +118,15 @@ hvrw_correct = replace(mbpp38_correct, model="vllm/cb_hvrw", base_url="http://lo
 hwdom_heldout = replace(heldout38, model="vllm/cb_hwdom")   # mbpp_hunt_wdom: the rollout-covariance-whitened cot_mean DoM at row 40
 hwdom_mbpp = replace(mbpp38, model="vllm/cb_hwdom")
 hwdom_correct = replace(mbpp38_correct, model="vllm/cb_hwdom", base_url="http://localhost:8000/v1")
-mbpplora_heldout = replace(heldout38, lora="mbpp_kto_lora")   # train_lora.py ENV mbpp: mbpp_kto's rows, neutrals and loss training a rank-16 LoRA on every decoder layer instead of a direction; the adapter is loaded on the cb_base server under that name
-mbpplora_mbpp = replace(mbpp38, lora="mbpp_kto_lora")   # every task; its train and validation splits are in-sample, so report the test split
-mbpplora_correct = replace(mbpp38_correct, lora="mbpp_kto_lora", base_url="http://localhost:8000/v1")
-mbpplora_tv_bug = replace(tv_bug38, lora="mbpp_kto_lora")
 # screen_vs_served.py's three directions, never served before, under mbpp_kto's hook (scripts/kto_serve_row.sh): does the teacher-forced screen predict the served cheat rate? Two samples of every task; the fits leave the test split out, so report the test split
 hbt_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hbt")   # dom_hunt_vr/b_late_sub_bt: a variance-ratio direction whose screen gains match grader_kto's
 hrwi_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hrwi")   # dom_hunt_vr/r_wi: the variance-ratio direction with the largest per-token margin on the screen
 hrat_mbpp = replace(mbpp38, epochs=2, model="vllm/cb_hrat")   # dom_hunt_new/synth_rat: the rationalizer-minus-honest difference of means, a large summed margin with a large honest loss
 mbpp38_x2 = replace(mbpp38, epochs=2)   # the base model on the server those three rows ran on
+mbpplora_heldout = replace(heldout38, lora="mbpp_kto_lora")   # train_lora.py ENV mbpp: mbpp_kto's rows, neutrals and loss training a rank-16 LoRA on every decoder layer instead of a direction; the adapter is loaded on the cb_base server under that name
+mbpplora_mbpp = replace(mbpp38, lora="mbpp_kto_lora")   # every task; its train and validation splits are in-sample, so report the test split
+mbpplora_correct = replace(mbpp38_correct, lora="mbpp_kto_lora", base_url="http://localhost:8000/v1")
+mbpplora_tv_bug = replace(tv_bug38, lora="mbpp_kto_lora")
 mbpplora_tv_bug_mt6 = replace(tv_bug38_mt6, lora="mbpp_kto_lora")
 mbpplora_tv_corr = replace(tv_corr38, lora="mbpp_kto_lora")
 mbpplora_tv_pos = replace(tv_pos38, lora="mbpp_kto_lora")

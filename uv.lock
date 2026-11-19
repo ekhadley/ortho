@@ -3650,7 +3650,7 @@ wheels = [
 [[package]]
 name = "rhenvs"
 version = "0.1.0"
-source = { git = "https://github.com/ekhadley/rh-envs#2d900717d7e1b2e4593b94ac05df85f06189aad8" }
+source = { git = "https://github.com/ekhadley/rh-envs#04b3737ad02cb6524ca1a517292b8748e620b0f2" }
 dependencies = [
     { name = "datasets" },
     { name = "huggingface-hub" },

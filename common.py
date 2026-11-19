@@ -87,7 +87,7 @@ def load_vector(vectors: Path, name: str) -> tuple[t.Tensor, list[int]]:
     return v, json.loads((vectors / f"{name}.json").read_text())["layers"]
 
 
-BASE_MODELS = {"vllm/Qwen3.8-27B": "Qwen3.8-27B", "vllm/cb_base": "Qwen3.8-27B", "openrouter/openai/gpt-oss-120b": "gpt-oss-120b", "openrouter/openai/gpt-oss-20b": "gpt-oss-20b"}  # model names that are an unedited model; any other vllm name is an edit baked into the weights (a bias-checkpoint row)
+BASE_MODELS = {"vllm/Qwen3.8-27B": "Qwen3.8-27B", "vllm/cb_base": "Qwen3.8-27B", "openrouter/openai/gpt-oss-120b": "gpt-oss-120b", "openrouter/openai/gpt-oss-20b": "gpt-oss-20b", "openrouter/qwen/qwen3.8-27b": "Qwen3.8-27B"}  # model names that are an unedited model; any other vllm name is an edit baked into the weights (a bias-checkpoint row)
 
 
 def condition(cfg: EvalCfg) -> str:
