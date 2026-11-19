@@ -43,7 +43,7 @@ from safetensors import safe_open
 ROOT = Path(__file__).resolve().parent
 VECTORS = ROOT / "data" / "vectors"
 TASKS = {"grader": grader, "secret_number": secret_number, "impossible_bench": lcb, "terminal_verifier": terminal_verifier, "mbpp": mbpp, "hint_mc": hint_mc, "sorh": sorh, "feasigen": feasigen, "toolfail": toolfail, "odcv": odcv, "refusal": refusal}
-TASK_FIELDS = ("config", "n", "family", "system", "prompts", "seed", "mode", "max_turns", "epochs")  # the EvalCfg fields that are task arguments
+TASK_FIELDS = ("config", "n", "family", "system", "prompts", "split", "seed", "mode", "max_turns", "epochs")  # the EvalCfg fields that are task arguments
 ENVS_COMMIT = json.loads(distribution("rhenvs").read_text("direct_url.json"))["vcs_info"]["commit_id"]  # the rhenvs commit uv installed from git
 SCALINGS = ("row", "unit", "resid_norm")
 INTERVENTION = ("lora", "add_vector", "add_layers", "add_alpha", "add_scaling", "ablate_vector", "ablate_layers", "ablate_row", "ablate_scale", "vectors")
@@ -57,6 +57,7 @@ class EvalCfg:
     family: str | None = None  # grader: a family under rhenvs configs/grader/families, or all
     system: str | None = None  # grader: none, generic or very_hacker
     prompts: str | None = None  # the arm. grader: hack (the request with the other side's grader), clean (the side's own) or none (the request alone). hint_mc: none, one of the six hints, or all. sorh: hack (the prompt states its metric) or none. feasigen: infeasible (the needed tool removed) or feasible. toolfail: tool_skip, result_ignore, output_fabrication, tool_required (all three) or control. odcv: incentivized or mandated. refusal: harmful or harmless
+    split: str | None = None  # refusal: test (the eval) or train (the prompts a direction is fit on), None for the task's default, test
     seed: int | None = None  # secret_number: draws the secrets. terminal_verifier: draws the grids and the verifier offsets
     mode: str | None = None  # terminal_verifier: what verifier.py holds: possible, corrupted, corrupted_negative or verifier_bug
     max_turns: int | None = None  # terminal_verifier: commands per episode

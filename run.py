@@ -380,7 +380,14 @@ REFUSAL38 = dict(harmful=refusal38, harmless=refusal38_harmless, harmful_low=ref
 # 30, 33, ..., 60 (refdom) and at every decoder layer (refdomall), every position, pinned at the harmless mean, and random unit rows at the same layers and pins (refdomrand, refdomallrand)
 for row in ("refdom", "refdomall", "refdomrand", "refdomallrand"):
     globals().update({f"{row}_{key}": replace(cfg, model=f"vllm/cb_{row}") for key, cfg in REFUSAL38.items()})
-instances = {k: v for k, v in globals().items() if isinstance(v, EvalCfg)}
+# heretic's 400 harmful train prompts, 2 samples of each with reasoning off, for refusal_dom.py resp: the base model's refusals and refdom's compliant answers to the same prompts
+refusal38_train = replace(refusal38, split="train", epochs=2)
+refdom_harmful_train = replace(refusal38_train, model="vllm/cb_refdom")
+# the same runs as the refdom rows under refusal_dom.py resp's response-token directions at every decoder layer, every position, pinned at the compliant answers' mean:
+# the mean over the first 32 answer tokens (refresp32) and over every answer token (refresp), and random unit rows at the same pins (refresp32rand, refresprand)
+for row in ("refresp32", "refresp", "refresp32rand", "refresprand"):
+    globals().update({f"{row}_{key}": replace(cfg, model=f"vllm/cb_{row}") for key, cfg in REFUSAL38.items()})
+instances ={k: v for k, v in globals().items() if isinstance(v, EvalCfg)}
 if len(sys.argv) == 1:
     print(f"{bold}{purple}run.py{endc}  ./run.py <name> ...  {gray}the named runs, one after another{endc}")
     for name, cfg in instances.items():

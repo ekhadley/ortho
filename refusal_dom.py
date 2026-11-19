@@ -9,6 +9,13 @@ refusal_dom (decoder layers 30, 33, ..., 60), refusal_dom_all (every decoder lay
 layers and pins. scripts/proj_export.py turns each into a hook file; run.py's refdom, refdomall, refdomrand and refdomallrand rows serve them.
     python refusal_dom.py fit       box, vLLM stopped: the four vectors and refusal_dom.json: norms, the test prompts' AUROC along the rows, and under each hook the
                                     first-token KL from the base model on heretic's test prompts (its damage measure, on the harmless ones) and MMLU, 0-shot
+    python refusal_dom.py resp      box, vLLM stopped, after run.py's refusal38_train, refdom_harmful_train, refusal38 and refdom_harmful: the direction from the
+                                    answers instead of the prompt. Base refusals and refdom's compliant answers to the same harmful train prompt (reasoning off,
+                                    refusal_traces.py's first-person label), read through the base model; per prompt the mean refusing minus the mean compliant
+                                    residual, averaged over prompts, pooled over the first FIRST answer tokens (refusal_resp32_all) and over every answer token
+                                    (refusal_resp_all), unit rows at every decoder layer pinned at the compliant mean, with random rows at the same pins
+                                    (_rand); refusal_resp.json holds the same checks as fit's, the test AUROC from refusal38 and refdom_harmful's answers and
+                                    the rows' cosine with refusal_dom. run.py's refresp32, refresp, refresp32rand and refresprand rows serve them
     python refusal_dom.py screen    box, vLLM stopped, after the refusal runs: teacher-forced log-prob gains of the records' completions under each hook (the hooked
                                     model's log-prob of a completion minus the base model's), acts/refusal/screen.json. Refusing and compliant answers to the same
                                     harmful test prompt are a pair, and the pair's margin is the compliant gain minus the refusing gain, as in a DPO reward"""
@@ -20,6 +27,7 @@ from pathlib import Path
 import torch as t
 from datasets import load_dataset
 from rhenvs.common import CONFIGS, load_config
+from rhenvs.refusal import ANSWER_CHARS, MARKERS
 from safetensors.torch import load_file, save_file
 from transformers import AutoModelForImageTextToText, AutoTokenizer
 
@@ -40,7 +48,12 @@ THINK_OPEN, THINK_CLOSE, NEWLINE, BLANK = 248068, 248069, 198, 271
 MMLU_EVERY = 4   # fit: every fourth MMLU test question
 MMLU_BATCH = 32
 SOURCES = ["base", "refdom", "refdomall"]   # screen: the served rows whose rollouts are scored
-PER_CLASS = 2   # screen: rollouts scored per config, prompt, source and class
+PER_CLASS = 2   # screen and resp: rollouts per config, prompt, source and class
+FIRST = 32   # resp: the answer tokens of the first pooling
+RESP = {f"refusal_resp{FIRST}_all": f"refresp{FIRST}", "refusal_resp_all": "refresp", f"refusal_resp{FIRST}_all_rand": f"refresp{FIRST}rand", "refusal_resp_all_rand": "refresprand"}   # resp: vector name to served row
+EOS = 248046   # <|im_end|>
+TOPICAL = ["disclaimer", "violat", "prohibit", "illegal", "harmful", "inappropriate", "unethical", "ethical boundaries"]   # resp: refusal_traces.py's label, heretic's markers that a compliant answer's disclaimer also holds
+PHRASES = ["not going to", "i'm not able", "i am not able"]   # and the refusal wordings heretic's list has no marker for
 
 #%% model: every decoder layer's output kept, then the hook in force applied to it at every position
 set_seed(SEED)
@@ -69,14 +82,16 @@ def at_layer(i: int):
     return hook
 for i, layer in enumerate(layers): layer.register_forward_hook(at_layer(i))
 
+system = load_config("refusal", "nothink")["system_prompt"]
+def render(prompt: str) -> list[int]:
+    """A prompt under heretic's system prompt with reasoning off, ending at the blank line after </think>."""
+    text = tok.apply_chat_template([{"role": "system", "content": system}, {"role": "user", "content": prompt}], add_generation_prompt=True, enable_thinking=False, tokenize=False)
+    ids = tok(text, add_special_tokens=False).input_ids
+    assert ids[-4:] == [THINK_OPEN, BLANK, THINK_CLOSE, BLANK], tok.decode(ids[-6:])
+    return ids
+
 #%% fit: the last prompt token's residual of heretic's train prompts, their difference of means, the four vectors
 if STAGE == "fit":
-    system = load_config("refusal", "nothink")["system_prompt"]
-    def render(prompt: str) -> list[int]:
-        text = tok.apply_chat_template([{"role": "system", "content": system}, {"role": "user", "content": prompt}], add_generation_prompt=True, enable_thinking=False, tokenize=False)
-        ids = tok(text, add_special_tokens=False).input_ids
-        assert ids[-4:] == [THINK_OPEN, BLANK, THINK_CLOSE, BLANK], tok.decode(ids[-6:])
-        return ids
     def last_resid(prompts: list[str], desc: str) -> t.Tensor:
         """The base model's residual at each prompt's last token, at every decoder layer's output: [n, 64, d_model]."""
         hs = []
@@ -85,10 +100,6 @@ if STAGE == "fit":
                 model(input_ids=t.tensor([render(p)], device="cuda"))
                 hs.append(t.stack([o[0, -1].float() for o in outputs]).cpu())
         return t.stack(hs)
-    def first_logps(prompts: list[str], desc: str) -> t.Tensor:
-        """Log-probs of each prompt's first answer token under the hook in force: [n, vocab]."""
-        with t.no_grad():
-            return t.stack([t.log_softmax(model(input_ids=t.tensor([render(p)], device="cuda")).logits[0, -1].float(), -1).cpu() for p in pbar(prompts, desc=desc)])
 
     train_bad, train_good = last_resid(PROMPTS["harmful"]["train"], "harmful train"), last_resid(PROMPTS["harmless"]["train"], "harmless train")
     test_bad, test_good = last_resid(PROMPTS["harmful"]["test"], "harmful test"), last_resid(PROMPTS["harmless"]["test"], "harmless test")
@@ -114,11 +125,85 @@ if STAGE == "fit":
     stats = dict(diff_norm=diff.norm(dim=1).tolist(), harmless_norm=mean_good.norm(dim=1).tolist(), pin=along(mean_good, dom).tolist(), gap_over_harmless_sd=gap_sd, cos_with_harmless_mean=cos_good, cos_next_layer=t.cosine_similarity(dom[:-1], dom[1:], dim=1).tolist(), test_auroc=auroc(dom), test_auroc_random=auroc(rand))
     print(f"{cyan}gap in harmless SDs: " + ", ".join(f"L{L} {gap_sd[L]:.1f}" for L in ALL[::6]) + f"; cosine with the harmless mean: " + ", ".join(f"L{L} {cos_good[L]:+.2f}" for L in ALL[::6]) + f"{endc}")
     print(f"{cyan}test AUROC along the row: " + ", ".join(f"L{L} {stats['test_auroc'][L]:.3f}" for L in ALL[::6]) + f"; random rows: " + ", ".join(f"L{L} {stats['test_auroc_random'][L]:.3f}" for L in ALL[::6]) + f"{endc}")
+    checked = HOOKS
+    meta = dict(model=MODEL_ID, revision=REVISION, prompts="rhenvs configs/refusal/prompts.json: heretic's mlabonne/harmful_behaviors and mlabonne/harmless_alpaca, train[:400] for the fit and test[:100] for the checks", system_prompt=system, position="last prompt token with reasoning off, the blank line after </think>", direction="harmful mean minus harmless mean, unit row per decoder layer, no orthogonalisation", pinned_at="harmless train mean at the same token", layers={NAME: STEP, f"{NAME}_all": ALL, f"{NAME}_rand": STEP, f"{NAME}_all_rand": ALL}, random_seed=SEED, **stats)
+    meta_path = OUT / f"{NAME}.json"
+
+#%% resp: the answer tokens of the base model's refusals and refdom's compliant answers to the same harmful prompts (reasoning off), their per-prompt difference of means, the four vectors
+if STAGE == "resp":
+    records = [json.loads(line) for path in sorted(Path("data/inspect/refusal").glob("*.jsonl")) for line in open(path)]
+    def first_person(r: dict) -> bool | None:
+        """refusal_traces.py's label: heretic's markers without the topical ones, or one of PHRASES, in the answer's first ANSWER_CHARS characters; None for an empty answer."""
+        answer = r["turns"][-1]["message"] or ""
+        head = " ".join(answer.lower().replace("*", "").replace("’", "'").split())[:ANSWER_CHARS]
+        return any(m in head for m in MARKERS + PHRASES if m not in TOPICAL) if answer else None
+    def pick(split: str, source: str, refused: bool) -> dict[int, list[dict]]:
+        """PER_CLASS rollouts per harmful prompt of the split from the served row source with that label, reasoning off: prompt index -> rollouts."""
+        rs = [r for r in records if r["labels"]["split"] == split and r["labels"]["prompts"] == "harmful" and r["config_id"] == "nothink" and r["model"] == f"vllm/cb_{source}" and r["cfg"]["n"] is None]
+        assert len({r["rollout_id"].split("/")[0] for r in rs}) == 1, f"{split} {source}: rollouts from {sorted({r['rollout_id'].split('/')[0] for r in rs})}, want one run"
+        out = {}
+        for r in rs:
+            if first_person(r) is refused: out.setdefault(r["labels"]["index"], []).append(r)
+        return {i: random.sample(v, min(PER_CLASS, len(v))) for i, v in sorted(out.items())}
+    def pooled(r: dict) -> tuple[t.Tensor, t.Tensor]:
+        """The base model's residual at every decoder layer's output, averaged over the answer's first FIRST tokens and over all of its tokens (the final <|im_end|> left out): two [64, d_model]."""
+        ids = r["ids"]
+        start = ids.index(THINK_CLOSE) + 2
+        assert ids[start - 1] == BLANK, f"{r['rollout_id']}: {tok.decode(ids[start - 3:start])}"
+        end = len(ids) - (ids[-1] == EOS)
+        with t.no_grad(): model(input_ids=t.tensor([ids[:end]], device="cuda"))
+        return t.stack([o[0, start:start + FIRST].float().mean(0) for o in outputs]).cpu(), t.stack([o[0, start:end].float().mean(0) for o in outputs]).cpu()
+    def means(sets: dict[int, list[dict]], desc: str) -> dict[int, list[tuple[t.Tensor, t.Tensor]]]: return {i: [pooled(r) for r in rs] for i, rs in pbar(list(sets.items()), desc=desc)}
+
+    random.seed(SEED)
+    use(None)
+    train_refuse, train_comply = pick("train", "base", True), pick("train", "refdom", False)
+    both = sorted(set(train_refuse) & set(train_comply))
+    print(f"{cyan}train: {len(train_refuse)} prompts with a base refusal, {len(train_comply)} with a refdom compliant answer, {len(both)} with both{endc}")
+    refuse = means({i: train_refuse[i] for i in both}, "train refusals")
+    comply = means({i: train_comply[i] for i in both}, "train compliant")
+    test_refuse, test_comply = pick("test", "base", True), pick("test", "refdom", False)
+    test_refuse, test_comply = means(test_refuse, "test refusals"), means(test_comply, "test compliant")
+    old = load_file(OUT / f"{NAME}_all.safetensors")["direction_unit"][1:].float()
+    d_model = old.shape[1]
+    rand = t.nn.functional.normalize(t.randn(64, d_model, generator=t.Generator().manual_seed(SEED)), dim=1)
+    OUT.mkdir(parents=True, exist_ok=True)
+    stats = {}
+    for k, pool in [(0, f"first {FIRST} answer tokens"), (1, "every answer token")]:
+        name = list(RESP)[k]
+        per_prompt = lambda xs, i: t.stack([x[k] for x in xs[i]]).mean(0)
+        refuse_mean = t.stack([per_prompt(refuse, i) for i in both]).mean(0)
+        comply_mean = t.stack([per_prompt(comply, i) for i in both]).mean(0)
+        diff = t.stack([per_prompt(refuse, i) - per_prompt(comply, i) for i in both]).mean(0)   # [64, d_model], toward the refusals
+        dom = t.nn.functional.normalize(diff, dim=1)
+        mean_resid = t.zeros(65, d_model)
+        mean_resid[1:] = comply_mean
+        for vec, rows in [(name, dom), (f"{name}_rand", rand)]:
+            u = t.zeros(65, d_model)
+            u[1:] = rows
+            save_file({"direction_unit": u.contiguous(), "mean_resid": mean_resid.contiguous()}, OUT / f"{vec}.safetensors")
+        along = lambda xs: t.stack([(x[k] * dom).sum(-1) for v in xs.values() for x in v])   # [n, 64]
+        test_auroc = (along(test_refuse)[:, None] > along(test_comply)[None]).float().mean((0, 1)).tolist()
+        stats[name] = dict(pool=pool, diff_norm=diff.norm(dim=1).tolist(), compliant_norm=comply_mean.norm(dim=1).tolist(), pin=(comply_mean * dom).sum(-1).tolist(), cos_with_refusal_dom=t.cosine_similarity(dom, old, dim=1).tolist(), cos_with_compliant_mean=t.cosine_similarity(dom, comply_mean, dim=1).tolist(), cos_next_layer=t.cosine_similarity(dom[:-1], dom[1:], dim=1).tolist(), test_auroc=test_auroc)
+        print(f"{cyan}{name} ({pool}): |refusing - compliant| / |compliant|: " + ", ".join(f"L{L} {diff[L].norm():.1f} / {comply_mean[L].norm():.0f}" for L in ALL[::6]) + f"{endc}")
+        print(f"{cyan}{name}: cosine with refusal_dom: " + ", ".join(f"L{L} {stats[name]['cos_with_refusal_dom'][L]:+.2f}" for L in ALL[::6]) + "; test AUROC along the row: " + ", ".join(f"L{L} {test_auroc[L]:.3f}" for L in ALL[::6]) + f"{endc}")
+    print(f"{cyan}cosine between the two directions: " + ", ".join(f"L{L} {t.cosine_similarity(load_file(OUT / f'{list(RESP)[0]}.safetensors')['direction_unit'][L + 1], load_file(OUT / f'{list(RESP)[1]}.safetensors')['direction_unit'][L + 1], dim=0):+.2f}" for L in ALL[::6]) + f"{endc}")
+    checked = RESP
+    meta = dict(model=MODEL_ID, revision=REVISION, prompts="rhenvs configs/refusal/prompts.json: heretic's harmful train[:400] for the fit, test[:100] for the AUROC", system_prompt=system, completions=f"run.py's refusal38_train (base refusals) and refdom_harmful_train (refdom compliant answers), reasoning off, up to {PER_CLASS} per prompt and class, labelled by refusal_traces.py's first-person match; the test AUROC on refusal38 and refdom_harmful", fit_prompts=both, train_rollouts=dict(refusing=sum(len(v) for v in refuse.values()), compliant=sum(len(v) for v in comply.values())), test_rollouts=dict(refusing=sum(len(v) for v in test_refuse.values()), compliant=sum(len(v) for v in test_comply.values())), residuals="the base model's, every decoder layer's output", direction="per prompt, the mean refusing answer minus the mean compliant answer, averaged over prompts; unit row per decoder layer", pinned_at="the prompt-balanced mean of the compliant answers under the same pooling", layers=ALL, random_seed=SEED, **stats)
+    meta_path = OUT / "refusal_resp.json"
+
+#%% checks, after fit or resp: under each of the stage's hooks, the first-token KL from the base model on heretic's test prompts and MMLU
+if STAGE in ("fit", "resp"):
+    def first_logps(prompts: list[str], desc: str) -> t.Tensor:
+        """Log-probs of each prompt's first answer token under the hook in force: [n, vocab]."""
+        with t.no_grad():
+            return t.stack([t.log_softmax(model(input_ids=t.tensor([render(p)], device="cuda")).logits[0, -1].float(), -1).cpu() for p in pbar(prompts, desc=desc)])
 
     # first-token KL from the base model under each hook, on heretic's harmless test prompts (its KL divergence score) and on its harmful ones
+    use(None)
     base_good, base_bad = first_logps(PROMPTS["harmless"]["test"], "first token, base, harmless"), first_logps(PROMPTS["harmful"]["test"], "first token, base, harmful")
     kl = {}
-    for name in HOOKS:
+    for name in checked:
         use(name)
         good, bad = first_logps(PROMPTS["harmless"]["test"], f"first token, {name}, harmless"), first_logps(PROMPTS["harmful"]["test"], f"first token, {name}, harmful")
         kl[name] = dict(harmless=(base_good.exp() * (base_good - good)).sum(-1).mean().item(), harmful=(base_bad.exp() * (base_bad - bad)).sum(-1).mean().item(), harmful_top=[tok.decode([i]) for i in bad.exp().mean(0).topk(5).indices.tolist()])
@@ -135,7 +220,7 @@ if STAGE == "fit":
     letters = [ids[0] for ids in letters]
     order = sorted(range(len(mmlu)), key=lambda k: len(mmlu_prompt(mmlu[k])), reverse=True)
     correct = {}
-    for name in [None, *HOOKS]:
+    for name in [None, *checked]:
         use(name)
         correct[name or "base"] = [False] * len(mmlu)
         for s in pbar(range(0, len(order), MMLU_BATCH), desc=f"mmlu {name or 'base'}"):
@@ -150,9 +235,8 @@ if STAGE == "fit":
     mmlu_stats = {name: dict(accuracy=sum(c) / len(c), vs_base=paired(correct["base"], c)) for name, c in correct.items()}
     for name, s in mmlu_stats.items(): print(f"{cyan}MMLU {name}: {s['accuracy'] * 100:.2f} of {len(mmlu)} questions, against base {s['vs_base']}{endc}")
 
-    meta = dict(model=MODEL_ID, revision=REVISION, prompts="rhenvs configs/refusal/prompts.json: heretic's mlabonne/harmful_behaviors and mlabonne/harmless_alpaca, train[:400] for the fit and test[:100] for the checks", system_prompt=system, position="last prompt token with reasoning off, the blank line after </think>", direction="harmful mean minus harmless mean, unit row per decoder layer, no orthogonalisation", pinned_at="harmless train mean at the same token", layers={NAME: STEP, f"{NAME}_all": ALL, f"{NAME}_rand": STEP, f"{NAME}_all_rand": ALL}, random_seed=SEED, **stats, first_token_kl=kl, mmlu_every=MMLU_EVERY, mmlu_n=len(mmlu), mmlu=mmlu_stats, mmlu_correct=correct)
-    (OUT / f"{NAME}.json").write_text(json.dumps(meta, indent=1))
-    print(f"{green}saved {', '.join(HOOKS)} and {NAME}.json in {OUT}{endc}")
+    meta_path.write_text(json.dumps(meta | dict(first_token_kl=kl, mmlu_every=MMLU_EVERY, mmlu_n=len(mmlu), mmlu=mmlu_stats, mmlu_correct=correct), indent=1))
+    print(f"{green}saved {', '.join(checked)} and {meta_path.name} in {OUT}{endc}")
 
 #%% screen: test-split rollouts of the base model and the two direction rows, PER_CLASS per config, prompt, source and class; harmless prompts from the base model only
 if STAGE == "screen":
