@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImpossibleBench traces, Qwen3.8-27B</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.2/lib/marked.umd.min.js"></script>
+<style>
+:root { color-scheme:dark; --bg:#1a1a19; --panel:#232322; --line:#3a3a38; --ink:#f0efec; --ink2:#c3c2b7; --muted:#8d8c84; --good:#5fb87a; --bad:#e0705f; }
+* { box-sizing:border-box; }
+body { margin:0; padding:16px; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:15px; margin:18px 0 8px; }
+.sub { color:var(--ink2); font-size:13px; max-width:1500px; }
+.note { color:var(--muted); font-size:12px; font-weight:400; }
+.sw { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-1px; margin-right:6px; }
+table { border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { color:var(--ink2); font-weight:600; }
+td.num, th.num { font-variant-numeric:tabular-nums; text-align:right; }
+#counts { background:var(--panel); border:1px solid var(--line); }
+#counts th.grp { text-align:center; border-left:1px solid var(--line); } #counts .first { border-left:1px solid var(--line); }
+#counts td.cnt { cursor:pointer; } #counts td.cnt:hover { background:#333331; }
+#pane { display:grid; height:calc(100vh - 32px); min-height:480px; border:1px solid var(--line); overflow:hidden; }
+#pane > .col { overflow:auto; min-width:0; padding:10px; scrollbar-color:#55554f #1f1f1e; scrollbar-width:thin; }
+#side { background:var(--panel); }
+.divider { cursor:col-resize; background:var(--line); } .divider:hover, .divider.drag { background:var(--ink2); }
+.filters { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-bottom:10px; font-size:12px; color:var(--ink2); }
+.filters label.f { display:flex; flex-direction:column; gap:3px; } .filters label.wide { grid-column:1 / -1; }
+.filters select, .filters input[type=text] { width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:0; padding:6px 8px; font:13px system-ui, sans-serif; }
+.filters .chk { display:flex; align-items:center; gap:6px; color:var(--ink); }
+.filters button.clr { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:0; padding:6px 8px; font:13px system-ui, sans-serif; cursor:pointer; } .filters button.clr:hover { background:#2b2b29; }
+#list { width:100%; }
+#list th { position:sticky; top:-10px; background:var(--panel); z-index:1; cursor:pointer; user-select:none; } #list th:hover { color:var(--ink); }
+#list th.up::after, #list th.down::after { content:""; display:inline-block; margin-left:5px; border-left:4px solid transparent; border-right:4px solid transparent; vertical-align:2px; }
+#list th.up::after { border-bottom:6px solid var(--ink); } #list th.down::after { border-top:6px solid var(--ink); }
+#list tr.s { cursor:pointer; } #list tr.s:hover { background:#2a2a28; } #list tr.sel { background:#3a3a37; }
+#list td.pr { max-width:0; width:99%; overflow:hidden; text-overflow:ellipsis; color:var(--ink2); }
+.no { color:var(--bad); } .dim { color:var(--muted); }
+.head { font-size:13px; margin-bottom:10px; display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+.head b { font-size:14px; }
+.sec + .sec .sec-h { border-top:none; }
+.sec-h { display:block; width:100%; text-align:left; background:#2b2b29; color:var(--ink); border:1px solid var(--line); border-radius:0; padding:7px 10px; font:600 13px system-ui, sans-serif; cursor:pointer; }
+.sec-h:hover { background:#333331; }
+.sec-h::before { content:""; display:inline-block; border-left:6px solid var(--ink2); border-top:4px solid transparent; border-bottom:4px solid transparent; margin-right:9px; vertical-align:1px; transform:rotate(90deg); }
+.sec.closed .sec-h::before { transform:none; }
+.sec-b { white-space:pre-wrap; word-break:break-word; font:12.5px/1.5 ui-monospace, monospace; background:var(--bg); border:1px solid var(--line); border-top:none; padding:8px 10px; }
+.sec.closed .sec-b { display:none; }
+.sec-b.md { white-space:normal; } .sec-b.md p, .sec-b.md ul, .sec-b.md ol, .sec-b.md table, .sec-b.md blockquote { margin:0 0 0.7em; } .sec-b.md > :last-child { margin-bottom:0; }
+.sec-b.md h1, .sec-b.md h2, .sec-b.md h3, .sec-b.md h4 { font-size:1.05em; margin:0.8em 0 0.4em; color:var(--ink); } .sec-b.md ul, .sec-b.md ol { padding-left:1.6em; } .sec-b.md li { margin:0.15em 0; }
+.sec-b.md pre { white-space:pre-wrap; background:var(--panel); border:1px solid var(--line); padding:6px 8px; margin:0 0 0.7em; } .sec-b.md code { background:var(--panel); padding:0 3px; } .sec-b.md pre code { background:none; padding:0; }
+.sec-b.md th, .sec-b.md td { border:1px solid var(--line); padding:2px 6px; white-space:normal; } .sec-b.md blockquote { border-left:3px solid var(--line); padding-left:8px; color:var(--ink2); } .sec-b.md hr { border:0; border-top:1px solid var(--line); }
+.sec-b.md .url { color:var(--muted); }
+.tg { display:inline-block; font-size:11px; padding:0 5px; margin-right:3px; border:1px solid var(--line); color:var(--ink2); }
+.ok { color:var(--good); }
+.jump { background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:0; padding:2px 8px; font:12px system-ui, sans-serif; cursor:pointer; } .jump:hover { background:#333331; } .jump.cur { border-color:var(--ink2); }
+.conf { font:12px ui-monospace, monospace; color:var(--ink2); margin:-4px 0 10px; }
+.att { margin:12px 0 4px; font-weight:600; color:var(--ink2); font-size:13px; }
+.empty { color:var(--muted); font-size:13px; padding:8px 0; }
+</style></head><body>
+<h1>ImpossibleBench LiveCodeBench traces: Qwen3.8-27B through OpenRouter</h1>
+<div class="sub">Qwen3.8-27B on OpenRouter pinned to Parasail fp8, reasoning effort low, temperature 1, top_p 0.95, top_k 20, 16,384 new tokens per attempt. The package's minimal scaffold: each attempt is one model turn whose code block is run against the tests in docker; a failure gets the traceback back with the task restated, up to 10 attempts. Test edits are allowed (an answer may include an edited test, which overwrites the original). All 103 problems of each split, one sample each (run.py's lcb38_plain, lcb38_paper, lcb38_original; research log E32).</div>
+<div class="sub" id="runs"></div>
+<div class="sub">Tags are regexes on the final answer, not labels: <span class="tg">state</span> call-counting or stored-state code; <span class="tg">flags</span> says the test is contradictory, flawed, incorrect or impossible; <span class="tg">asserts</span> holds a check function or assert lines (an edited test, or the test quoted). On the conflicting split, the header of a rollout lists the assert pairs that contradict (same arguments, different expected values), parsed from the prompt.</div>
+<h2>Passed / rollouts <span class="note">(click a count to list its rollouts)</span></h2>
+<table id="counts"></table>
+<h2>Rollouts <span class="note">(drag the divider to resize; arrow keys move through the list; column titles sort)</span></h2>
+<div id="pane">
+  <div class="col" id="side">
+    <div class="filters">
+      <label class="f">run<select id="f-run"></select></label>
+      <label class="f">passed<select id="f-passed"><option value="">any</option><option value="1">passed</option><option value="0">failed</option></select></label>
+      <label class="f">attempts<select id="f-att"><option value="">any</option></select></label>
+      <label class="f">tag<select id="f-tag"><option value="">any</option><option>state</option><option>flags</option><option>asserts</option><option value="-">none</option></select></label>
+      <label class="f wide">problem number or text in the final answer<input type="text" id="f-q"></label>
+      <label class="chk"><input type="checkbox" id="f-md" checked> render markdown</label>
+      <button class="clr" id="f-clear">clear filters</button>
+      <span class="note" id="nshown"></span>
+    </div>
+    <table id="list"></table>
+  </div>
+  <div class="divider"></div>
+  <div class="col" id="view"></div>
+</div>
+<script>
+const D = __DATA__;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const run = Object.fromEntries(D.runs.map(m => [m.id, m]));
+const sw = m => `<span class="sw" style="background:${m.color}"></span>`;
+$("runs").innerHTML = "Runs: " + D.runs.map(m => `${sw(m)}<b>${esc(m.short)}</b> = ${esc(m.label)}`).join("; ") + ".";
+
+// markdown: raw html in model text is shown as text, images are not loaded, links are not clickable
+if (window.marked) marked.use({renderer: {html: t => esc(t.text), image: t => esc(t.raw), link(t) { const text = this.parser.parseInline(t.tokens); return t.text === t.href ? text : `${text} <span class="url">[${esc(t.href)}]</span>`; }}});
+try { $("f-md").checked = localStorage.getItem("lcb-traces-md") !== "0"; } catch (e) {}
+const MD = () => !!window.marked && $("f-md").checked;
+if (!window.marked) document.body.insertAdjacentHTML("afterbegin", `<div style="color:#e0705f;font-weight:600;margin-bottom:8px">marked did not load (offline?): text is shown raw.</div>`);
+
+const final = s => s.attempts[s.attempts.length - 1].answer;
+const tags = s => s.tags.map(t => `<span class="tg">${t}</span>`).join("");
+const res = s => s.passed ? `<span class="${s.run === "lcb38_original" ? "ok" : "no"}">passed</span>` : `<span class="dim">failed</span>`;
+const byKey = Object.fromEntries(D.samples.map((s, i) => [s.run + "|" + s.task, i]));
+
+// counts: passes per run, all and by tag
+const COLS_C = [["all", s => true], ["state", s => s.tags.includes("state")], ["flags", s => s.tags.includes("flags")], ["asserts", s => s.tags.includes("asserts")], ["no tag", s => !s.tags.length]];
+$("counts").innerHTML = `<tr><th>run</th>${COLS_C.map(([t]) => `<th class="num first">${t}</th>`).join("")}</tr>`
+  + D.runs.map(m => `<tr><td>${sw(m)}${esc(m.short)}</td>` + COLS_C.map(([t, f]) => {
+      const xs = D.samples.filter(s => s.run === m.id && f(s));
+      return `<td class="num cnt first" data-f="${esc(JSON.stringify({run: m.id, tag: t === "all" ? "" : t === "no tag" ? "-" : t}))}">${xs.filter(s => s.passed).length}/${xs.length}</td>`;
+    }).join("") + `</tr>`).join("");
+$("counts").addEventListener("click", e => { const td = e.target.closest("td.cnt"); if (td) setFilters(JSON.parse(td.dataset.f)); });
+
+// the selected rollout
+let shown = [], sel = null;
+const closed = new Set(["task prompt"]);   // section kinds that start closed; the choice carries over between rollouts
+function sec(kind, title, text, md) { return `<div class="sec${closed.has(kind) ? " closed" : ""}" data-k="${kind}"><button class="sec-h">${title}</button><div class="sec-b${md && MD() ? " md" : ""}">${md && MD() ? marked.parse(text, {breaks: true, gfm: true}) : esc(text)}</div></div>`; }
+function show() {
+  document.querySelectorAll("#list tr.s").forEach(tr => tr.classList.toggle("sel", +tr.dataset.id === sel));
+  if (sel == null) { $("view").innerHTML = `<div class="empty">No rollout matches the filters.</div>`; return; }
+  const s = D.samples[sel], m = run[s.run], conf = D.conflicts[s.task] || [];
+  const others = D.runs.map(o => { const j = byKey[o.id + "|" + s.task], t = D.samples[j]; return `<button class="jump${j === sel ? " cur" : ""}" data-j="${j}">${sw(o)}${esc(o.short)}: ${t.passed ? "passed" : "failed"}, ${t.attempts.length}</button>`; }).join(" ");
+  $("view").innerHTML = `<div class="head">${sw(m)}<b>${esc(m.short)}</b><span>${esc(s.task)}</span><span>${res(s)}</span><span>${s.attempts.length} attempt${s.attempts.length > 1 ? "s" : ""}</span><span>${tags(s)}</span><span>${s.rchars.toLocaleString()} reasoning chars</span></div>`
+    + `<div class="head"><span class="dim">this problem in each run (attempts):</span>${others}</div>`
+    + (s.run !== "lcb38_original" ? `<div class="conf">contradicting asserts: ${conf.length ? conf.map(esc).join("; ") : "none parsed"}</div>` : "")
+    + sec("task prompt", "task prompt", D.prompts[s.run + "|" + s.task])
+    + s.attempts.map((a, k) => `<div class="att">attempt ${k + 1}${k === s.attempts.length - 1 ? (s.passed ? " (passed)" : " (last)") : ""}</div>` + sec("reasoning", "reasoning", a.reasoning || "(empty)", 1) + sec("answer", "answer", a.answer || "(empty)", 1) + (a.feedback ? sec("feedback", "test feedback", a.feedback) : "")).join("");
+  $("view").scrollTop = 0;
+  $("view").querySelectorAll(".sec-h").forEach(b => b.addEventListener("click", () => { const d = b.parentNode, k = d.dataset.k; const c = !closed.has(k); c ? closed.add(k) : closed.delete(k); $("view").querySelectorAll(`.sec[data-k="${k}"]`).forEach(x => x.classList.toggle("closed", c)); }));
+  $("view").querySelectorAll(".jump").forEach(b => b.addEventListener("click", () => { const j = +b.dataset.j; if (!shown.includes(j)) setFilters({}); sel = j; show(); document.querySelector(`#list tr.s[data-id="${sel}"]`)?.scrollIntoView({block: "nearest"}); }));
+}
+
+// the list: sort key, title, right-aligned
+const COLS = [["n", "#", 1], ["run", "run"], ["passed", "result"], ["att", "att", 1], ["tags", "tags"], ["rchars", "reasoning", 1]];
+const SORT = {n: s => s.n, run: s => D.runs.findIndex(m => m.id === s.run), passed: s => s.passed, att: s => s.attempts.length, tags: s => s.tags.join(" "), rchars: s => s.rchars};
+const FILTERS = ["run", "passed", "att", "tag"];
+let sortBy = {k: "n", dir: 1};
+function setFilters(f) { for (const k of FILTERS) $("f-" + k).value = f[k] ?? ""; $("f-q").value = f.q ?? ""; render(); }
+function render() {
+  const f = Object.fromEntries(FILTERS.map(k => [k, $("f-" + k).value])), q = $("f-q").value.trim().toLowerCase();
+  shown = D.samples.map((s, i) => i).filter(i => { const s = D.samples[i];
+    return (!f.run || s.run === f.run) && (!f.passed || String(+s.passed) === f.passed) && (!f.att || String(s.attempts.length) === f.att)
+      && (!f.tag || (f.tag === "-" ? !s.tags.length : s.tags.includes(f.tag))) && (!q || (/^\d+$/.test(q) ? String(s.n) === q : final(s).toLowerCase().includes(q))); });
+  const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0, by = k => (a, b) => cmp(SORT[k](D.samples[a]), SORT[k](D.samples[b]));   // the clicked column first, then problem, run
+  shown.sort((a, b) => sortBy.dir * by(sortBy.k)(a, b) || by("n")(a, b) || by("run")(a, b));
+  $("nshown").textContent = `${shown.length} shown`;
+  $("list").innerHTML = `<tr>${COLS.map(([k, t, r]) => `<th data-k="${k}" class="${r ? "num " : ""}${sortBy.k === k ? (sortBy.dir > 0 ? "up" : "down") : ""}">${t}</th>`).join("")}</tr>`
+    + shown.map(i => { const s = D.samples[i], m = run[s.run];
+      return `<tr class="s" data-id="${i}"><td class="num">${s.n}</td><td>${sw(m)}${esc(m.short)}</td><td>${res(s)}</td><td class="num">${s.attempts.length}</td><td>${tags(s)}</td><td class="num">${s.rchars.toLocaleString()}</td></tr>`; }).join("");
+  if (!shown.includes(sel)) sel = shown.length ? shown[0] : null;
+  $("side").scrollTop = 0;
+  show();
+}
+$("list").addEventListener("click", e => {
+  const th = e.target.closest("th"), tr = e.target.closest("tr.s");
+  if (th) { sortBy = {k: th.dataset.k, dir: sortBy.k === th.dataset.k ? -sortBy.dir : 1}; render(); }
+  else if (tr) { sel = +tr.dataset.id; show(); }
+});
+document.addEventListener("keydown", e => {
+  if (!["ArrowDown", "ArrowUp"].includes(e.key) || ["SELECT", "INPUT"].includes(e.target.tagName) || !shown.length) return;
+  const j = Math.max(0, Math.min(shown.length - 1, shown.indexOf(sel) + (e.key === "ArrowDown" ? 1 : -1)));
+  e.preventDefault(); sel = shown[j]; show();
+  document.querySelector(`#list tr.s[data-id="${sel}"]`).scrollIntoView({block: "nearest"});
+});
+
+// the divider: the list's width in px, kept in localStorage
+let width = 520;
+try { const w = +localStorage.getItem("lcb-traces-width"); if (w >= 180) width = w; } catch (e) {}
+const applyW = () => $("pane").style.gridTemplateColumns = `${width}px 6px minmax(240px, 1fr)`;
+const divider = document.querySelector(".divider");
+divider.addEventListener("pointerdown", e => {
+  e.preventDefault(); divider.setPointerCapture(e.pointerId); divider.classList.add("drag");
+  const x0 = e.clientX, w0 = width;
+  const move = ev => { width = Math.max(180, w0 + ev.clientX - x0); applyW(); };
+  const up = () => { divider.classList.remove("drag"); divider.removeEventListener("pointermove", move); divider.removeEventListener("pointerup", up); try { localStorage.setItem("lcb-traces-width", width); } catch (e) {} };
+  divider.addEventListener("pointermove", move); divider.addEventListener("pointerup", up);
+});
+applyW();
+
+$("f-run").innerHTML = `<option value="">any</option>` + D.runs.map(m => `<option value="${m.id}">${esc(m.short)}</option>`).join("");
+$("f-att").innerHTML += [...new Set(D.samples.map(s => s.attempts.length))].sort((a, b) => a - b).map(n => `<option>${n}</option>`).join("");
+for (const k of FILTERS) $("f-" + k).addEventListener("change", render);
+$("f-q").addEventListener("input", render);
+$("f-md").addEventListener("change", () => { try { localStorage.setItem("lcb-traces-md", $("f-md").checked ? "1" : "0"); } catch (e) {} show(); });
+$("f-clear").addEventListener("click", () => setFilters({}));
+setFilters({run: "lcb38_plain"});
+</script></body></html>

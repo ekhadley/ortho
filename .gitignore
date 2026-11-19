@@ -22,3 +22,5 @@ logs/*/
 
 # The refusal trace viewer (refusal_traces.py): a 14 MB build of records that are in the HF dataset
 figures/refusal_traces.html
+# The ImpossibleBench trace viewer (lcb_traces.py): a 40 MB build of records that are in the HF dataset
+figures/lcb38_traces.html
